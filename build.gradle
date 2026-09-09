@@ -1,0 +1,27 @@
+plugins {
+    id 'application'
+    id 'org.openjfx.javafxplugin' version '0.1.0'
+}
+
+repositories {
+    mavenCentral()
+}
+
+dependencies {
+    // No additional dependencies for now; we'll use standard JDK and JavaFX
+}
+
+javafx {
+    version = "24.0.2"
+    modules = [ 'javafx.controls', 'javafx.fxml' ]
+}
+
+application {
+    mainModule = 'forkknight'
+    mainClass = 'forkknight.App'
+}
+
+// Make sure we use UTF-8 encoding
+tasks.withType(JavaCompile) {
+    options.encoding = 'UTF-8'
+}
