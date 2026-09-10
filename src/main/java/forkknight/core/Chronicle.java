@@ -31,7 +31,8 @@ public class Chronicle {
     private static final String[] ORDERS = {
             "log", "status", "show", "rev-parse", "for-each-ref",
             "diff-tree", "stash", "commit", "add", "reset", "checkout",
-            "switch", "branch", "tag", "rev-list", "merge"
+            "switch", "branch", "tag", "rev-list", "merge", "fetch", "push",
+            "remote", "pull"
     };
 
     private static final Map<String, String> CODEX = buildCodex();
@@ -70,6 +71,14 @@ public class Chronicle {
         m.put("lineage", "rev-list");
         // fusion      -> merge          (two banners become one)
         m.put("fusion", "merge");
+        // rally       -> fetch          (call the allied hosts home)
+        m.put("rally", "fetch");
+        // emissary    -> push           (send word to allied lands)
+        m.put("emissary", "push");
+        // allies      -> remote         (the allied realms' roll)
+        m.put("allies", "remote");
+        // recall      -> pull           (bring allied wisdom here)
+        m.put("recall", "pull");
         return Map.copyOf(m);
     }
 
@@ -357,6 +366,68 @@ public class Chronicle {
     public void abandonDisputedFusion() throws IOException, InterruptedException {
         command("fusion").flags("--abort").run();
     }
+
+    // ------------------------------------------------------------------
+    // The Herald: allied realms (remotes) - rally, recall, emissary
+    // ------------------------------------------------------------------
+
+    /** The roll of allied realms: "name url" pairs from remote -v. */
+    public List<Ally> allies() throws IOException, InterruptedException {
+        String out = command("allies").flags("-v").run();
+        List<Ally> allies = new ArrayList<>();
+        java.util.Set<String> seen = new java.util.HashSet<>();
+        for (String line : out.split("\n")) {
+            String[] p = line.strip().split("\\s+");
+            if (p.length < 2) {
+                continue;
+            }
+            if (seen.add(p[0])) {
+                allies.add(new Ally(p[0], p[1]));
+            }
+        }
+        return allies;
+    }
+
+    /**
+     * Rallies the allied hosts: brings every banner of the given ally
+     * (or all allies when null) up to date without touching the realm.
+     */
+    public void rally(String ally) throws IOException, InterruptedException {
+        Command cmd = command("rally");
+        if (ally != null && !ally.isBlank()) {
+            cmd.target(ally);
+        }
+        cmd.flags("--prune").run();
+    }
+
+    /**
+     * Recalls allied wisdom: brings the raised banner up to date with
+     * its counterpart at the ally (pull with rebase-free fast path).
+     */
+    public void recall(String ally) throws IOException, InterruptedException {
+        requireClearedField();
+        Command cmd = command("recall").flags("--ff-only");
+        if (ally != null && !ally.isBlank()) {
+            cmd.target(ally);
+        }
+        cmd.run();
+    }
+
+    /**
+     * Sends the emissary: carries the raised banner's newest feats to the
+     * ally (push). Refuses to overwrite allied history.
+     */
+    public void sendEmissary(String ally) throws IOException, InterruptedException {
+        String banner = activeBanner();
+        Command cmd = command("emissary");
+        if (ally != null && !ally.isBlank()) {
+            cmd.target(ally);
+        }
+        cmd.target(banner).run();
+    }
+
+    /** An allied realm in the roll of allies (a remote). */
+    public record Ally(String name, String url) {}
 
     // ------------------------------------------------------------------
     // Field state (working copy), muster, enlist, seal

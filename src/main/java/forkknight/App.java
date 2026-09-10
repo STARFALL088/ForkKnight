@@ -64,6 +64,7 @@ public class App extends Application {
     private TextField scryField;
     private ComboBox<Scryer.Scope> scryScopeBox;
     private ComboBox<String> sigilBox;
+    private ComboBox<String> allyBox;
     private Button summonKamuiBtn;
     private Scene mainScene;
     private boolean darkTheme = true;
@@ -146,10 +147,34 @@ public class App extends Application {
         meltSigilBtn.setDisable(true);
         meltSigilBtn.setOnAction(e -> meltSelectedSigil());
 
+        // ----- herald row: allied realms -----
+        Label allyLabel = new Label("Allies:");
+        allyBox = new ComboBox<>();
+        allyBox.setPromptText("No allies");
+        allyBox.setDisable(true);
+        allyBox.setPrefWidth(120);
+        Button rallyBtn = new Button("Rally");
+        rallyBtn.setDisable(true);
+        rallyBtn.setOnAction(e -> rallyAllies());
+        Button recallBtn = new Button("Recall");
+        recallBtn.setDisable(true);
+        recallBtn.setOnAction(e -> recallFromAlly());
+        Button emissaryBtn = new Button("Emissary");
+        emissaryBtn.setDisable(true);
+        emissaryBtn.setOnAction(e -> sendEmissary());
+        allyBox.disableProperty().addListener((obs, was, is) -> {
+            boolean off = is;
+            rallyBtn.setDisable(off);
+            recallBtn.setDisable(off);
+            emissaryBtn.setDisable(off);
+        });
+
         HBox bannerRow = new HBox(10, bannerLabel, bannerBox, raiseBannerBtn,
                 marchBtn, fuseBtn, fellBtn,
                 new Separator(),
-                sigilLabel, sigilBox, pressSigilBtn, meltSigilBtn);
+                sigilLabel, sigilBox, pressSigilBtn, meltSigilBtn,
+                new Separator(),
+                allyLabel, allyBox, rallyBtn, recallBtn, emissaryBtn);
         bannerRow.setPadding(new Insets(0, 10, 10, 10));
         bannerRow.setAlignment(Pos.CENTER_LEFT);
 
@@ -414,6 +439,7 @@ public class App extends Application {
             realmPathField.setText(dir.getAbsolutePath());
             loadBanners();
             loadSigils();
+            loadAllies();
             surveyTrail(null);
             refreshKamuiButton();
         });
@@ -763,6 +789,82 @@ public class App extends Application {
         };
         task.setOnSucceeded(e -> summonKamuiBtn.setDisable(!task.getValue()));
         startDaemon(task, "kamui-check");
+    }
+
+    // ------------------------------------------------------------------
+    // The Herald: allies (remotes), rally, recall, emissary
+    // ------------------------------------------------------------------
+
+    /** Loads the roll of allies into the combo box. */
+    private void loadAllies() {
+        if (chronicle == null) {
+            return;
+        }
+        Chronicle service = chronicle;
+        Task<List<Chronicle.Ally>> task = new Task<>() {
+            @Override
+            protected List<Chronicle.Ally> call() throws Exception {
+                return service.allies();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            allyBox.getItems().setAll(task.getValue().stream()
+                    .map(Chronicle.Ally::name).toList());
+            if (!allyBox.getItems().isEmpty()) {
+                allyBox.getSelectionModel().selectFirst();
+            }
+            allyBox.setDisable(allyBox.getItems().isEmpty());
+        });
+        task.setOnFailed(e -> allyBox.setDisable(true));
+        startDaemon(task, "ally-load");
+    }
+
+    /** The selected ally name, or null to address all allies. */
+    private String selectedAlly() {
+        return allyBox.getSelectionModel().getSelectedItem();
+    }
+
+    /** Rally: refresh knowledge of allied banners (fetch). */
+    private void rallyAllies() {
+        if (chronicle == null) {
+            return;
+        }
+        String ally = selectedAlly();
+        runRealmAction("Rally " + (ally == null ? "all allies" : "'" + ally + "'"),
+                () -> chronicle.rally(ally),
+                () -> statusBar.setText("The allied hosts have been rallied."));
+    }
+
+    /** Recall: fast-forward the raised banner from the ally (pull). */
+    private void recallFromAlly() {
+        if (chronicle == null) {
+            return;
+        }
+        String ally = selectedAlly();
+        String label = ally == null ? "all allies" : ally;
+        confirmDialog("Recall",
+                "Recall allied wisdom from '" + label + "'?",
+                () -> runRealmAction("Recall from '" + label + "'",
+                        () -> chronicle.recall(ally),
+                        () -> {
+                            loadBanners();
+                            surveyTrail(null);
+                            statusBar.setText("Allied wisdom recalled; the trail is current.");
+                        }));
+    }
+
+    /** Emissary: carry the raised banner's feats to the ally (push). */
+    private void sendEmissary() {
+        if (chronicle == null) {
+            return;
+        }
+        String ally = selectedAlly();
+        String label = ally == null ? "all allies" : ally;
+        confirmDialog("Emissary",
+                "Send the emissary to '" + label + "' with the newest feats?",
+                () -> runRealmAction("Emissary to '" + label + "'",
+                        () -> chronicle.sendEmissary(ally),
+                        () -> statusBar.setText("The emissary returned; word has been delivered.")));
     }
 
     // ------------------------------------------------------------------

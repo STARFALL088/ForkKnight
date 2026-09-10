@@ -407,4 +407,102 @@ class ChronicleTest {
         assertFalse(chronicle.surveyTrail().get(0).isFusion());
         assertEquals("main writes c", chronicle.surveyTrail().get(0).summary());
     }
+
+    // ------------------------------------------------------------------
+    // The Herald: allies (remotes), rally, recall, emissary
+    // ------------------------------------------------------------------
+
+    /** Creates a bare "allied realm" and links the working realm to it. */
+    private Chronicle realmWithAlly() throws Exception {
+        Chronicle chronicle = initRealm();
+        Path realm = chronicle.getRealmDir().toPath();
+        Path ally = tempDir.resolve("allied-realm.git");
+        Files.createDirectories(ally);
+        dragon(ally, "init", "-q", "--bare", "-b", "main", ".");
+        dragon(realm, "remote", "add", "ally", ally.toAbsolutePath().toString());
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "first feat");
+        return chronicle;
+    }
+
+    @Test
+    void alliesRollListsTheAlly() throws Exception {
+        Chronicle chronicle = realmWithAlly();
+        List<Chronicle.Ally> allies = chronicle.allies();
+        assertEquals(1, allies.size());
+        assertEquals("ally", allies.get(0).name());
+        assertTrue(allies.get(0).url().endsWith("allied-realm.git"));
+    }
+
+    @Test
+    void emissaryThenRallyRoundTripsFeats() throws Exception {
+        Chronicle chronicle = realmWithAlly();
+        Path realm = chronicle.getRealmDir().toPath();
+        dragon(realm, "push", "-q", "-u", "ally", "main");
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "second feat");
+
+        // Emissary carries the new feat to the ally...
+        chronicle.sendEmissary("ally");
+        // ...and a second clone rallying from the ally sees it.
+        Path elsewhere = tempDir.resolve("elsewhere");
+        Files.createDirectories(elsewhere);
+        dragon(elsewhere, "clone", "-q",
+                tempDir.resolve("allied-realm.git").toAbsolutePath().toString(), ".");
+        Chronicle otherSide = new Chronicle(elsewhere.toFile());
+        assertEquals("second feat", otherSide.surveyTrail().get(0).summary());
+    }
+
+    @Test
+    void recallBringsAllyFeatsIntoTheRealm() throws Exception {
+        Chronicle chronicle = realmWithAlly();
+        Path realm = chronicle.getRealmDir().toPath();
+        dragon(realm, "push", "-q", "-u", "ally", "main");
+
+        // An ally-side knight adds a feat on their copy of the trail.
+        Path elsewhere = tempDir.resolve("elsewhere");
+        Files.createDirectories(elsewhere);
+        dragon(elsewhere, "clone", "-q",
+                tempDir.resolve("allied-realm.git").toAbsolutePath().toString(), ".");
+        dragon(elsewhere, "config", "user.email", "o@x");
+        dragon(elsewhere, "config", "user.name", "Other");
+        dragon(elsewhere, "commit", "-q", "--allow-empty", "-m", "ally-side feat");
+        dragon(elsewhere, "push", "-q", "origin", "main");
+
+        // Rally refreshes knowledge; recall fast-forwards our banner.
+        chronicle.rally("ally");
+        int before = chronicle.surveyTrail().size();
+        chronicle.recall("ally");
+        assertEquals(before + 1, chronicle.surveyTrail().size());
+        assertEquals("ally-side feat", chronicle.surveyTrail().get(0).summary());
+    }
+
+    @Test
+    void recallRefusesWhenTrailWouldRewrite() throws Exception {
+        Chronicle chronicle = realmWithAlly();
+        Path realm = chronicle.getRealmDir().toPath();
+        dragon(realm, "push", "-q", "-u", "ally", "main");
+
+        // Both sides seal independent feats: histories have diverged.
+        Path elsewhere = tempDir.resolve("elsewhere");
+        Files.createDirectories(elsewhere);
+        dragon(elsewhere, "clone", "-q",
+                tempDir.resolve("allied-realm.git").toAbsolutePath().toString(), ".");
+        dragon(elsewhere, "config", "user.email", "o@x");
+        dragon(elsewhere, "config", "user.name", "Other");
+        dragon(elsewhere, "commit", "-q", "--allow-empty", "-m", "ally feat");
+        dragon(elsewhere, "push", "-q", "origin", "main");
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "local feat");
+
+        chronicle.rally("ally");
+        assertThrows(IOException.class, () -> chronicle.recall("ally"));
+        // Nothing was rewritten: our local feat still leads the trail.
+        assertEquals("local feat", chronicle.surveyTrail().get(0).summary());
+    }
+
+    @Test
+    void rallyWithNoAlliesIsHarmless() throws Exception {
+        Chronicle chronicle = initRealm();
+        dragon(tempDir.resolve("realm"), "commit", "-q", "--allow-empty", "-m", "base");
+        // No allies configured: rallying all must not throw.
+        assertDoesNotThrow(() -> chronicle.rally(null));
+    }
 }
