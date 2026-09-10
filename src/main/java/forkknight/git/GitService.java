@@ -34,14 +34,30 @@ public class GitService {
 
     /** Returns the full commit history of the current HEAD. */
     public List<Commit> log() throws IOException, InterruptedException {
-        return log(Integer.MAX_VALUE);
+        return log(null, Integer.MAX_VALUE);
     }
 
     public List<Commit> log(int maxCount) throws IOException, InterruptedException {
+        return log(null, maxCount);
+    }
+
+    /**
+     * Commit history of the given branch (or the current HEAD when branch
+     * is null), newest first.
+     */
+    public List<Commit> log(String branch, int maxCount)
+            throws IOException, InterruptedException {
         String sep = "\u001e";
         String format = "%H%x09%aE%x09%an%x09%ad%x09%s%x09%b" + sep;
-        String out = run("log", "--date=short", "--max-count=" + maxCount,
-                "--pretty=format:" + format);
+        List<String> args = new ArrayList<>();
+        args.add("log");
+        args.add("--date=short");
+        args.add("--max-count=" + maxCount);
+        if (branch != null && !branch.isBlank()) {
+            args.add(branch);
+        }
+        args.add("--pretty=format:" + format);
+        String out = run(args.toArray(new String[0]));
         List<Commit> commits = new ArrayList<>();
         for (String entry : out.split(sep)) {
             // Keep the entry as-is: trim() would strip the trailing tab that
@@ -60,6 +76,33 @@ public class GitService {
             commits.add(new Commit(p[0], p[2], p[1], date, p[4], p[5].trim()));
         }
         return commits;
+    }
+
+    /** Names of all local branches; the checked-out one first. */
+    public List<String> branches() throws IOException, InterruptedException {
+        String out = run("for-each-ref", "--format=%(HEAD) %(refname:short)",
+                "refs/heads");
+        List<String> result = new ArrayList<>();
+        List<String> current = new ArrayList<>();
+        for (String line : out.split("\n")) {
+            String name = line.strip();
+            if (name.isEmpty()) {
+                continue;
+            }
+            if (name.startsWith("*")) {
+                current.add(name.substring(1).strip());
+            } else {
+                result.add(name);
+            }
+        }
+        List<String> all = new ArrayList<>(current);
+        all.addAll(result);
+        return all;
+    }
+
+    /** The currently checked-out branch name. */
+    public String currentBranch() throws IOException, InterruptedException {
+        return run("rev-parse", "--abbrev-ref", "HEAD").trim();
     }
 
     /** Unified diff of the given commit against its first parent. */

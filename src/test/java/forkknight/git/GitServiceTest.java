@@ -169,4 +169,38 @@ class GitServiceTest {
         List<Commit> commits = service.log();
         assertEquals("", service.showFileDiff(commits.get(0).hash(), "no/such/file.txt"));
     }
+
+    @Test
+    void listsBranchesWithCurrentFirst() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        git(service, "branch", "feature");
+
+        assertEquals(List.of("main", "feature"), service.branches());
+        assertEquals("main", service.currentBranch());
+    }
+
+    @Test
+    void logForSpecificBranch() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        git(service, "checkout", "-qb", "feature");
+        Files.writeString(service.getRepoDir().toPath().resolve("f.txt"), "f\n");
+        git(service, "add", "f.txt");
+        git(service, "commit", "-qm", "feature work");
+        git(service, "checkout", "-q", "main");
+        git(service, "commit", "-q", "--allow-empty", "-m", "main work");
+
+        List<Commit> featureLog = service.log("feature", Integer.MAX_VALUE);
+        assertEquals(2, featureLog.size());
+        assertEquals("feature work", featureLog.get(0).summary());
+
+        List<Commit> mainLog = service.log("main", Integer.MAX_VALUE);
+        assertEquals(2, mainLog.size());
+        assertEquals("main work", mainLog.get(0).summary());
+
+        // The no-branch overload follows the current HEAD (main).
+        List<Commit> headLog = service.log();
+        assertEquals("main work", headLog.get(0).summary());
+    }
 }

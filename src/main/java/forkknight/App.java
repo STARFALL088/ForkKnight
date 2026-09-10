@@ -35,6 +35,7 @@ public class App extends Application {
     private TextField repoPathField;
     private final ObservableList<Commit> commitData = FXCollections.observableArrayList();
     private Label statusBar;
+    private ComboBox<String> branchBox;
 
     private DetailsView detailsView;
 
@@ -55,6 +56,21 @@ public class App extends Application {
 
         HBox repoBox = new HBox(10, repoLabel, repoPathField, chooseRepoBtn);
         repoBox.setPadding(new Insets(10));
+
+        Label branchLabel = new Label("Branch:");
+        branchBox = new ComboBox<>();
+        branchBox.setPromptText("Current branch");
+        branchBox.setDisable(true);
+        branchBox.setPrefWidth(160);
+        branchBox.setOnAction(e -> {
+            String branch = branchBox.getSelectionModel().getSelectedItem();
+            if (branch != null && git != null) {
+                loadCommits(branch);
+            }
+        });
+        HBox branchBoxUi = new HBox(10, branchLabel, branchBox);
+        branchBoxUi.setPadding(new Insets(0, 10, 10, 10));
+        branchBoxUi.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
         commitTable = new TableView<>();
         commitTable.setPlaceholder(new Label("No commits to display"));
@@ -96,8 +112,8 @@ public class App extends Application {
         statusBar = new Label("Ready");
         statusBar.setPadding(new Insets(4, 10, 4, 10));
 
-        VBox top = new VBox(5, repoBox, new Separator());
-        top.setPadding(new Insets(10));
+        VBox top = new VBox(5, repoBox, branchBoxUi, new Separator());
+        top.setPadding(new Insets(10, 10, 0, 10));
 
         SplitPane center = new SplitPane();
         center.setOrientation(Orientation.VERTICAL);
@@ -136,14 +152,44 @@ public class App extends Application {
         task.setOnSucceeded(e -> {
             git = candidate;
             repoPathField.setText(dir.getAbsolutePath());
-            loadCommits();
+            loadBranches();
+            loadCommits(null);
         });
         task.setOnFailed(e -> showError("Not a git repository: "
                 + task.getException().getMessage()));
         new Thread(task, "repo-validate").start();
     }
 
-    private void loadCommits() {
+    private void loadBranches() {
+        GitService service = git;
+        Task<List<String>> task = new Task<>() {
+            @Override
+            protected List<String> call() throws Exception {
+                return service.branches();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            branchBox.getItems().setAll(task.getValue());
+            String current;
+            try {
+                current = service.currentBranch();
+            } catch (Exception ex) {
+                current = null;
+            }
+            if (current != null && !current.isBlank()) {
+                branchBox.getSelectionModel().select(current);
+            } else if (!branchBox.getItems().isEmpty()) {
+                branchBox.getSelectionModel().selectFirst();
+            }
+            branchBox.setDisable(branchBox.getItems().isEmpty());
+        });
+        task.setOnFailed(e -> branchBox.setDisable(true));
+        Thread thread = new Thread(task, "branch-loader");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void loadCommits(String branch) {
         commitData.clear();
         detailsView.reset();
         commitTable.setPlaceholder(new Label("Loading commits..."));
@@ -153,7 +199,7 @@ public class App extends Application {
         Task<List<Commit>> task = new Task<>() {
             @Override
             protected List<Commit> call() throws Exception {
-                return service.log();
+                return service.log(branch, Integer.MAX_VALUE);
             }
         };
         task.setOnSucceeded(e -> {
