@@ -45,13 +45,16 @@ java --module-path /path/to/javafx-sdk-24.0.2/lib --add-modules javafx.controls,
 
 ## Next Steps for Development
 
-1. Implement a directory chooser to select a local Git repository.
-2. Use JGit or ProcessBuilder to fetch Git log and display commits.
-3. Show a commit graph on a Canvas or using a list.
-4. Allow selecting a commit to view the file tree and diff.
+1. ~~Implement a directory chooser to select a local Git repository.~~ (done)
+2. ~~Use JGit or ProcessBuilder to fetch Git log and display commits.~~ (done)
+3. ~~Show a commit graph on a Canvas or using a list.~~ (done, table-based)
+4. ~~Allow selecting a commit to view the file tree and diff.~~ (done)
+5. Add branch selector / show all branches in the log.
+6. Stage and commit changes from within the app.
+7. Search/filter the commit history.
 
 ## Notes
 
-- The current starter just shows a welcome screen.
-- All Git operations should be performed on background threads to avoid blocking the UI.
-- Consider using the [Eclipse JGit](https://www.eclipse.org/jgit/) library for Git operations.
+- Selecting a commit in the log shows its changed files (with add/delete/rename status) and the unified diff of the selected file.
+- All Git operations run on background threads to avoid blocking the UI.
+- Git access goes through the git CLI (see `GitService`); rename detection is enabled for changed-file listings.
