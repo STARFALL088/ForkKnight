@@ -22,12 +22,17 @@ record SealWords(String summary, String body) {}
 public class SealDialog extends Dialog<SealWords> {
 
     public SealDialog() {
+        this("", "");
+    }
+
+    /** Pre-filled variant, used by re-seal to carry the current words. */
+    public SealDialog(String summary, String body) {
         setTitle("ForkKnight - Seal the Pact");
         setHeaderText("Bind the vanguard's deeds into the chronicle");
 
-        TextField summaryField = new TextField();
+        TextField summaryField = new TextField(summary == null ? "" : summary);
         summaryField.setPromptText("One bold line");
-        TextArea bodyArea = new TextArea();
+        TextArea bodyArea = new TextArea(body == null ? "" : body);
         bodyArea.setPromptText("The longer tale (optional)");
         bodyArea.setPrefRowCount(6);
         bodyArea.setPrefColumnCount(50);
@@ -48,11 +53,11 @@ public class SealDialog extends Dialog<SealWords> {
             if (button != ButtonType.OK) {
                 return null;
             }
-            String summary = summaryField.getText() == null
+            String headline = summaryField.getText() == null
                     ? "" : summaryField.getText().strip();
-            String body = bodyArea.getText() == null
+            String tale = bodyArea.getText() == null
                     ? "" : bodyArea.getText().strip();
-            return new SealWords(summary, body);
+            return new SealWords(headline, tale);
         });
 
         Node okButton = getDialogPane().lookupButton(ButtonType.OK);

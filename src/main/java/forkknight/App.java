@@ -961,6 +961,8 @@ public class App extends Application {
                 runRealmAction("Enlist all", chronicle::enlistAll));
         Button sealBtn = new Button("Seal...");
         sealBtn.setOnAction(e -> sealVanguard());
+        Button reSealBtn = new Button("Re-seal...");
+        reSealBtn.setOnAction(e -> reSealNewest());
         Button banishBtn = new Button("Banish...");
         banishBtn.setOnAction(e -> banishSelected());
         Button kamuiBtn = new Button("Kamui");
@@ -971,7 +973,7 @@ public class App extends Application {
 
         HBox buttons = new HBox(8, musterBtn, new Separator(),
                 enlistBtn, releaseBtn, enlistAllBtn, new Separator(),
-                sealBtn, banishBtn, new Separator(),
+                sealBtn, reSealBtn, banishBtn, new Separator(),
                 kamuiBtn, summonKamuiBtn);
         buttons.setPadding(new Insets(8));
 
@@ -1025,6 +1027,34 @@ public class App extends Application {
         Optional<SealWords> words = dialog.showAndWait();
         words.ifPresent(w -> runRealmAction("Seal",
                 () -> chronicle.seal(w.summary(), w.body())));
+    }
+
+    /** Re-seal: fold the vanguard into the newest feat (amend). */
+    private void reSealNewest() {
+        if (chronicle == null) {
+            return;
+        }
+        Feat newest;
+        try {
+            newest = chronicle.newestFeat();
+        } catch (Exception ex) {
+            showError(ex.getMessage());
+            return;
+        }
+        try {
+            chronicle.requireVanguard();
+        } catch (Exception ex) {
+            showError("Nothing to fold - enlist files before re-sealing.");
+            return;
+        }
+        SealDialog dialog = new SealDialog(newest.summary(),
+                newest.body() == null ? "" : newest.body());
+        dialog.setTitle("ForkKnight - Re-seal the Newest Feat");
+        dialog.setHeaderText("Fold the vanguard into '"
+                + newest.shortHash() + "' and rewrite its words");
+        Optional<SealWords> words = dialog.showAndWait();
+        words.ifPresent(w -> runRealmAction("Re-seal",
+                () -> chronicle.reSeal(w.summary(), w.body())));
     }
 
     private void banishSelected() {

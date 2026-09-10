@@ -169,7 +169,7 @@ public class Chronicle {
     /** Files changed in a feat; fusions are tolled against the first parent. */
     public List<Dispatch> tollOf(String hash) throws IOException, InterruptedException {
         String out = command("toll").flags("--no-commit-id", "--name-status", "-r",
-                        "-m", "--first-parent", "-M", "-z")
+                        "--root", "-m", "--first-parent", "-M", "-z")
                 .target(hash).runRaw();
         String[] tokens = out.split("\0");
         List<Dispatch> dispatches = new ArrayList<>();
@@ -516,6 +516,33 @@ public class Chronicle {
         String words = body == null || body.isBlank()
                 ? summary : summary + "\n\n" + body;
         return seal(words);
+    }
+
+    /**
+     * Re-seals the newest feat: folds the vanguard into it and rewrites
+     * its words (amend). The resulting hash replaces the old one.
+     */
+    public Feat reSeal(String words) throws IOException, InterruptedException {
+        requireVanguard();
+        command("seal").flags("--amend", "-m", words).run();
+        String hash = command("mark").flags("HEAD").run().trim();
+        return new Feat(hash, List.of(), null, null, LocalDate.now(), words, "");
+    }
+
+    /** Re-seal with separate summary and tale. */
+    public Feat reSeal(String summary, String body) throws IOException, InterruptedException {
+        String words = body == null || body.isBlank()
+                ? summary : summary + "\n\n" + body;
+        return reSeal(words);
+    }
+
+    /** Words of the newest feat, for pre-filling the re-seal dialog. */
+    public Feat newestFeat() throws IOException, InterruptedException {
+        List<Feat> trail = surveyTrail(1);
+        if (trail.isEmpty()) {
+            throw new IOException("The chronicle holds no feats yet.");
+        }
+        return trail.get(0);
     }
 
     /** Throws when the vanguard is empty (nothing staged to seal). */

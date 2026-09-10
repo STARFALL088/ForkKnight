@@ -81,18 +81,25 @@ rally with no allies is a harmless no-op.
 - Ctrl+Shift+D - Day Sight / Night Sight toggle
 - Ctrl+Q - Depart
 
+### Re-seal (amend)
+`reSeal` folds the vanguard into the newest feat and rewrites its
+words (git commit --amend); `newestFeat` exposes HEAD for pre-filling
+the dialog. Also fixed: tolls of root feats now resolve via diff-tree
+--root (the very first feat previously showed an empty toll).
+
+**Test suite: 58 green**
+
 ---
 
 ## Planned Next (in rough order)
 
-1. **Re-seal (amend)** - fold new work into the last feat
-2. **Realm statistics panel** - lane counts per banner, feats per hero
+1. **Realm statistics panel** - lane counts per banner, feats per hero
    (a nice histogram), busiest paths
-3. **Chronicle range scrying** - "last 7 days" / "by hero X" quick
+2. **Chronicle range scrying** - "last 7 days" / "by hero X" quick
    filters using the Scryer index
-4. **Settings persistence** - remember last realm, theme, window size
+3. **Settings persistence** - remember last realm, theme, window size
    (a small JSON vault in ~/.forkknight)
 
 ---
 
-*Last updated: keyboard shorts forged; the knight rides fast.*
+*Last updated: re-seal forged; root-feat tolls fixed.*

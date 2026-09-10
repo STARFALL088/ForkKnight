@@ -505,4 +505,49 @@ class ChronicleTest {
         // No allies configured: rallying all must not throw.
         assertDoesNotThrow(() -> chronicle.rally(null));
     }
+
+    // ------------------------------------------------------------------
+    // Re-seal (amend)
+    // ------------------------------------------------------------------
+
+    @Test
+    void reSealFoldsWorkIntoNewestFeat() throws Exception {
+        Chronicle chronicle = initRealm();
+        Path realm = chronicle.getRealmDir().toPath();
+        Files.writeString(realm.resolve("a.txt"), "one\n");
+        dragon(realm, "add", "a.txt");
+        dragon(realm, "commit", "-qm", "first words");
+
+        Files.writeString(realm.resolve("b.txt"), "two\n");
+        chronicle.enlist("b.txt");
+        Feat reSealed = chronicle.reSeal("better words");
+
+        // Still exactly ONE feat, now carrying both files.
+        List<Feat> trail = chronicle.surveyTrail();
+        assertEquals(1, trail.size());
+        assertEquals(reSealed.hash(), trail.get(0).hash());
+        assertEquals("better words", trail.get(0).summary());
+        List<Dispatch> toll = chronicle.tollOf(trail.get(0).hash());
+        assertEquals(2, toll.size());
+    }
+
+    @Test
+    void reSealRefusesEmptyVanguard() throws Exception {
+        Chronicle chronicle = initRealm();
+        dragon(tempDir.resolve("realm"), "commit", "-q", "--allow-empty", "-m", "base");
+        assertThrows(IOException.class, () -> chronicle.reSeal("nothing to fold"));
+    }
+
+    @Test
+    void newestFeatExposesHead() throws Exception {
+        Chronicle chronicle = initRealm();
+        dragon(tempDir.resolve("realm"), "commit", "-q", "--allow-empty", "-m", "only feat");
+        assertEquals("only feat", chronicle.newestFeat().summary());
+    }
+
+    @Test
+    void newestFeatRejectsEmptyChronicle() throws Exception {
+        Chronicle chronicle = initRealm();
+        assertThrows(IOException.class, chronicle::newestFeat);
+    }
 }
