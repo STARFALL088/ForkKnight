@@ -19,6 +19,9 @@ import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
+import javafx.scene.input.KeyCode;
+import javafx.scene.input.KeyCodeCombination;
+import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
@@ -73,6 +76,9 @@ public class App extends Application {
 
     private TableView<Dispatch> fieldTable;
     private final ObservableList<Dispatch> fieldData = FXCollections.observableArrayList();
+    private TabPane tabPane;
+    private Tab scrollTab;
+    private Tab fieldTab;
 
     public static void main(String[] args) {
         launch(args);
@@ -263,15 +269,17 @@ public class App extends Application {
         chronicleTab.setTop(scryRow);
         chronicleTab.setCenter(center);
 
-        TabPane tabs = new TabPane();
+        tabPane = new TabPane();
         Tab scrollTab = new Tab("Scroll");
         scrollTab.setClosable(false);
         scrollTab.setContent(chronicleTab);
+        this.scrollTab = scrollTab;
         Tab fieldTab = new Tab("The Field");
         fieldTab.setClosable(false);
         fieldTab.setContent(buildFieldView());
-        tabs.getTabs().addAll(scrollTab, fieldTab);
-        tabs.getSelectionModel().selectedItemProperty().addListener((obs, o, newTab) -> {
+        this.fieldTab = fieldTab;
+        tabPane.getTabs().addAll(scrollTab, fieldTab);
+        tabPane.getSelectionModel().selectedItemProperty().addListener((obs, o, newTab) -> {
             if (newTab == fieldTab) {
                 musterTheField();
             }
@@ -279,7 +287,7 @@ public class App extends Application {
 
         BorderPane root = new BorderPane();
         root.setTop(new VBox(buildMenuBar(), top));
-        root.setCenter(tabs);
+        root.setCenter(tabPane);
         root.setBottom(statusBar);
 
         mainScene = new Scene(root, 1100, 750);
@@ -374,14 +382,46 @@ public class App extends Application {
     // ------------------------------------------------------------------
 
     private MenuBar buildMenuBar() {
-        Menu realmMenu = new Menu("Realm");
+        Menu realmMenu = new Menu("_Realm");
         MenuItem seekItem = new MenuItem("Seek Realm...");
+        seekItem.setAccelerator(new KeyCodeCombination(KeyCode.O,
+                KeyCombination.CONTROL_DOWN));
         seekItem.setOnAction(e -> seekRealm());
-        MenuItem quitItem = new MenuItem("Depart");
-        quitItem.setOnAction(e -> javafx.application.Platform.exit());
-        realmMenu.getItems().addAll(seekItem, new SeparatorMenuItem(), quitItem);
+        realmMenu.getItems().add(seekItem);
 
-        Menu viewMenu = new Menu("Sight");
+        MenuItem musterItem = new MenuItem("Muster the Field");
+        musterItem.setAccelerator(new KeyCodeCombination(KeyCode.R,
+                KeyCombination.CONTROL_DOWN));
+        musterItem.setOnAction(e -> {
+            tabPane.getSelectionModel().select(fieldTab);
+            musterTheField();
+        });
+        realmMenu.getItems().add(musterItem);
+
+        MenuItem sealItem = new MenuItem("Seal the Vanguard...");
+        sealItem.setAccelerator(new KeyCodeCombination(KeyCode.N,
+                KeyCombination.CONTROL_DOWN));
+        sealItem.setOnAction(e -> {
+            tabPane.getSelectionModel().select(fieldTab);
+            sealVanguard();
+        });
+        realmMenu.getItems().add(sealItem);
+
+        MenuItem rallyItem = new MenuItem("Rally the Allies");
+        rallyItem.setAccelerator(new KeyCodeCombination(KeyCode.F5));
+        rallyItem.setOnAction(e -> {
+            rallyAllies();
+            surveyTrail(bannerBox.getSelectionModel().getSelectedItem());
+        });
+        realmMenu.getItems().add(rallyItem);
+
+        MenuItem quitItem = new MenuItem("Depart");
+        quitItem.setAccelerator(new KeyCodeCombination(KeyCode.Q,
+                KeyCombination.CONTROL_DOWN));
+        quitItem.setOnAction(e -> javafx.application.Platform.exit());
+        realmMenu.getItems().addAll(new SeparatorMenuItem(), quitItem);
+
+        Menu viewMenu = new Menu("_Sight");
         ToggleGroup themeGroup = new ToggleGroup();
         RadioMenuItem darkItem = new RadioMenuItem("Night Sight");
         RadioMenuItem lightItem = new RadioMenuItem("Day Sight");
@@ -390,7 +430,20 @@ public class App extends Application {
         darkItem.setSelected(darkTheme);
         darkItem.setOnAction(e -> setTheme(true));
         lightItem.setOnAction(e -> setTheme(false));
+        lightItem.setAccelerator(new KeyCodeCombination(KeyCode.D,
+                KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
         viewMenu.getItems().addAll(darkItem, lightItem);
+
+        viewMenu.getItems().add(new SeparatorMenuItem());
+        MenuItem scryItem = new MenuItem("Peer into the Scryer...");
+        scryItem.setAccelerator(new KeyCodeCombination(KeyCode.F,
+                KeyCombination.CONTROL_DOWN));
+        scryItem.setOnAction(e -> {
+            tabPane.getSelectionModel().select(scrollTab);
+            scryField.requestFocus();
+            scryField.selectAll();
+        });
+        viewMenu.getItems().add(scryItem);
 
         MenuBar menuBar = new MenuBar();
         menuBar.getMenus().addAll(realmMenu, viewMenu);

@@ -72,20 +72,27 @@ rally with no allies is a harmless no-op.
 
 **Test suite: 54 green**
 
+### Keyboard Shorts (the knight's quick orders)
+- Ctrl+O - Seek Realm
+- Ctrl+R - Muster the Field (jump to The Field tab + refresh)
+- Ctrl+N - Seal the Vanguard (commit dialog)
+- F5 - Rally the Allies + re-survey the trail
+- Ctrl+F - Peer into the Scryer (focus + select search box)
+- Ctrl+Shift+D - Day Sight / Night Sight toggle
+- Ctrl+Q - Depart
+
 ---
 
 ## Planned Next (in rough order)
 
-1. **Keyboard shorts** - Ctrl+N seal, Ctrl+F scry focus, Ctrl+R muster,
-   F5 rally + survey refresh
-2. **Re-seal (amend)** - fold new work into the last feat
-3. **Realm statistics panel** - lane counts per banner, feats per hero
+1. **Re-seal (amend)** - fold new work into the last feat
+2. **Realm statistics panel** - lane counts per banner, feats per hero
    (a nice histogram), busiest paths
-4. **Chronicle range scrying** - "last 7 days" / "by hero X" quick
+3. **Chronicle range scrying** - "last 7 days" / "by hero X" quick
    filters using the Scryer index
-5. **Settings persistence** - remember last realm, theme, window size
+4. **Settings persistence** - remember last realm, theme, window size
    (a small JSON vault in ~/.forkknight)
 
 ---
 
-*Last updated: the Herald is forged and standing.*
+*Last updated: keyboard shorts forged; the knight rides fast.*
