@@ -104,15 +104,31 @@ The Scryer grows three combinable lenses, ANDed over the woven trail:
 The "Still" button clears all three at once. Hero options refresh with
 every survey; the previous choice is re-selected when it still exists.
 
-**Test suite: 70 green**
+### The Knight's Memory (settings persistence)
+`KnightMemory`: a tiny escape-aware key=value vault at
+`~/.forkknight/memory` with atomic write-then-move saves (staging file +
+ATOMIC_MOVE), comment/blank tolerance and corruption-safe reads.
+Remembers:
+- the last realm (auto-reopened on launch when it still exists)
+- the favored sight (night/day theme, saved on switch)
+- window bounds (restored within sane minimums)
+
+**Test suite: 79 green**
 
 ---
 
-## Planned Next (in rough order)
+## Planned Next (ideas, in rough order)
 
-1. **Settings persistence** - remember last realm, theme, window size
-   (a small JSON vault in ~/.forkknight)
+1. **Undo/redo of realm actions** - an action history with inverse ops
+2. **Chronicle annotations** - notes attached to feats (local only,
+   stored in the Knight's Memory, keyed by hash)
+3. **Trailing banners view** - a full banners panel with ahead/behind
+   counts vs the raised banner
+4. **Weave polish** - hover tooltips with feat summaries, clickable
+   curve selection
+5. **Distribution** - jpackage a self-contained launcher
 
 ---
 
-*Last updated: scrying lenses forged; the trail bends to three lenses.*
+*Last updated: the knight now remembers his realm, his sight and his
+place; the planned backlog is fresh ideas.*

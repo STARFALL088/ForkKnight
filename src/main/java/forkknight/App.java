@@ -3,6 +3,7 @@ package forkknight;
 import forkknight.core.Banner;
 import forkknight.core.Chronicler;
 import forkknight.core.Chronicle;
+import forkknight.core.KnightMemory;
 import forkknight.core.Dispatch;
 import forkknight.core.Feat;
 import forkknight.core.Scryer;
@@ -89,7 +90,10 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) {
+        this.primaryStage = primaryStage;
+        memory = new KnightMemory();
         primaryStage.setTitle("ForkKnight - Scroll of the Realm");
+        restoreSightAndBounds(primaryStage);
 
         // ----- realm chooser row -----
         Label realmLabel = new Label("Realm:");
@@ -313,6 +317,55 @@ public class App extends Application {
         primaryStage.setScene(mainScene);
         applyTheme();
         primaryStage.show();
+
+        // The knight remembers where he rode last; on departure, he
+        // writes down the realm, the sight he favored and his position.
+        primaryStage.setOnCloseRequest(e -> persistMemory());
+        String lastRealm = memory.recall("realm").orElse(null);
+        if (lastRealm != null && new File(lastRealm).isDirectory()) {
+            openRealm(new File(lastRealm));
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // The knight's memory (settings persistence)
+    // ------------------------------------------------------------------
+
+    private Stage primaryStage;
+    private KnightMemory memory;
+
+    /** Restores window bounds and the favored sight from the memory. */
+    private void restoreSightAndBounds(Stage stage) {
+        try {
+            String w = memory.recall("window.width").orElse(null);
+            String h = memory.recall("window.height").orElse(null);
+            if (w != null && h != null) {
+                double width = Double.parseDouble(w);
+                double height = Double.parseDouble(h);
+                if (width >= 640 && height >= 400) {
+                    stage.setWidth(width);
+                    stage.setHeight(height);
+                }
+            }
+        } catch (NumberFormatException ignored) {
+            // scribbled bounds: keep the defaults
+        }
+        darkTheme = !"day".equals(memory.recall("sight").orElse("night"));
+    }
+
+    /** Writes everything worth remembering on departure. */
+    private void persistMemory() {
+        try {
+            memory.remember("sight", darkTheme ? "night" : "day");
+            memory.remember("window.width", String.valueOf(primaryStage.getWidth()));
+            memory.remember("window.height", String.valueOf(primaryStage.getHeight()));
+            String realm = realmPathField.getText();
+            if (realm != null && !realm.isBlank()) {
+                memory.remember("realm", realm);
+            }
+        } catch (IOException ex) {
+            // a knight departs even when his quill breaks
+        }
     }
 
     private Button pressSigilBtn;
@@ -478,6 +531,11 @@ public class App extends Application {
     private void setTheme(boolean dark) {
         darkTheme = dark;
         applyTheme();
+        try {
+            memory.remember("sight", dark ? "night" : "day");
+        } catch (IOException ignored) {
+            // the sight changes even if the quill fails
+        }
     }
 
     private void applyTheme() {
@@ -515,6 +573,11 @@ public class App extends Application {
         task.setOnSucceeded(e -> {
             chronicle = candidate;
             realmPathField.setText(dir.getAbsolutePath());
+            try {
+                memory.remember("realm", dir.getAbsolutePath());
+            } catch (IOException ignored) {
+                // ride on even if the memory fails
+            }
             loadBanners();
             loadSigils();
             loadAllies();
