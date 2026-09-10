@@ -87,19 +87,24 @@ words (git commit --amend); `newestFeat` exposes HEAD for pre-filling
 the dialog. Also fixed: tolls of root feats now resolve via diff-tree
 --root (the very first feat previously showed an empty toll).
 
-**Test suite: 58 green**
+### The Council (realm statistics)
+`Chronicler` computes the realm's tale with bounded min-heap TOP-K
+selection (O(n log k)): heroes' standings, busiest days, fusion count,
+campaign span and path heat. The CouncilDialog (Realm menu, Ctrl+I)
+reads them aloud; path heat samples the newest 200 feats on a worker
+thread so big realms never stall the UI.
+
+**Test suite: 66 green**
 
 ---
 
 ## Planned Next (in rough order)
 
-1. **Realm statistics panel** - lane counts per banner, feats per hero
-   (a nice histogram), busiest paths
-2. **Chronicle range scrying** - "last 7 days" / "by hero X" quick
+1. **Chronicle range scrying** - "last 7 days" / "by hero X" quick
    filters using the Scryer index
-3. **Settings persistence** - remember last realm, theme, window size
+2. **Settings persistence** - remember last realm, theme, window size
    (a small JSON vault in ~/.forkknight)
 
 ---
 
-*Last updated: re-seal forged; root-feat tolls fixed.*
+*Last updated: the Council convenes; the chronicler reads.*

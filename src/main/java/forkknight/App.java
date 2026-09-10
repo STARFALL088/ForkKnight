@@ -1,6 +1,7 @@
 package forkknight;
 
 import forkknight.core.Banner;
+import forkknight.core.Chronicler;
 import forkknight.core.Chronicle;
 import forkknight.core.Dispatch;
 import forkknight.core.Feat;
@@ -414,6 +415,12 @@ public class App extends Application {
             surveyTrail(bannerBox.getSelectionModel().getSelectedItem());
         });
         realmMenu.getItems().add(rallyItem);
+
+        MenuItem councilItem = new MenuItem("Summon the Council...");
+        councilItem.setAccelerator(new KeyCodeCombination(KeyCode.I,
+                KeyCombination.CONTROL_DOWN));
+        councilItem.setOnAction(e -> summonCouncil());
+        realmMenu.getItems().add(councilItem);
 
         MenuItem quitItem = new MenuItem("Depart");
         quitItem.setAccelerator(new KeyCodeCombination(KeyCode.Q,
@@ -919,6 +926,52 @@ public class App extends Application {
                         () -> chronicle.sendEmissary(ally),
                         () -> statusBar.setText("The emissary returned; word has been delivered.")));
     }
+
+    // ------------------------------------------------------------------
+    // The Council (realm statistics)
+    // ------------------------------------------------------------------
+
+    /** Feats whose tolls feed the path heat (bounded for speed). */
+    private static final int HEAT_SAMPLE = 200;
+
+    /**
+     * Summons the council: the chronicler reads the realm's tale. Toll
+     * gathering runs on a worker thread (one subprocess per feat would
+     * otherwise stall the UI on big realms); the heat samples at most
+     * the newest HEAT_SAMPLE feats.
+     */
+    private void summonCouncil() {
+        if (chronicle == null) {
+            showError("Seek a realm first.");
+            return;
+        }
+        Chronicle service = chronicle;
+        statusBar.setText("The chronicler is reading the realm...");
+        Task<Chronicler> task = new Task<>() {
+            @Override
+            protected Chronicler call() throws Exception {
+                List<Feat> feats = service.surveyTrail();
+                Chronicler chronicler = Chronicler.of(feats);
+                java.util.Map<String, List<Dispatch>> tolls = new java.util.HashMap<>();
+                List<Feat> sample = feats.subList(0,
+                        Math.min(feats.size(), HEAT_SAMPLE));
+                for (Feat feat : sample) {
+                    tolls.put(feat.hash(), service.tollOf(feat.hash()));
+                }
+                pathHeatForCouncil = chronicler.pathHeat(tolls, 8);
+                return chronicler;
+            }
+        };
+        task.setOnSucceeded(e -> {
+            statusBar.setText("The council has spoken.");
+            new CouncilDialog(task.getValue(), pathHeatForCouncil).showAndWait();
+        });
+        task.setOnFailed(e -> showError("The chronicler could not read: "
+                + task.getException().getMessage()));
+        startDaemon(task, "council-reading");
+    }
+
+    private List<Chronicler.PathHeat> pathHeatForCouncil = List.of();
 
     // ------------------------------------------------------------------
     // The Field tab (working changes)
