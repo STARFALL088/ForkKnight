@@ -94,17 +94,25 @@ campaign span and path heat. The CouncilDialog (Realm menu, Ctrl+I)
 reads them aloud; path heat samples the newest 200 feats on a worker
 thread so big realms never stall the UI.
 
-**Test suite: 66 green**
+### Scrying Lenses (range + hero filters)
+The Scryer grows three combinable lenses, ANDed over the woven trail:
+- text (trie + inverted index, as before)
+- recency: All / last 7 / 30 / 90 days (`scryRecent`)
+- hero: exact match from the trail's roster (`scryByHero`,
+  `heroes()` in first-seen order)
+
+The "Still" button clears all three at once. Hero options refresh with
+every survey; the previous choice is re-selected when it still exists.
+
+**Test suite: 70 green**
 
 ---
 
 ## Planned Next (in rough order)
 
-1. **Chronicle range scrying** - "last 7 days" / "by hero X" quick
-   filters using the Scryer index
-2. **Settings persistence** - remember last realm, theme, window size
+1. **Settings persistence** - remember last realm, theme, window size
    (a small JSON vault in ~/.forkknight)
 
 ---
 
-*Last updated: the Council convenes; the chronicler reads.*
+*Last updated: scrying lenses forged; the trail bends to three lenses.*

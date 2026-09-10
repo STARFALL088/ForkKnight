@@ -106,4 +106,51 @@ class ScryerTest {
         assertEquals(3, scryer.feats().size());
         assertEquals(2, scryer.scry("login", Scryer.Scope.SUMMARY).size());
     }
+
+    // ------------------------------------------------------------------
+    // Range scrying: recency and hero filters
+    // ------------------------------------------------------------------
+
+    @Test
+    void scryRecentMatchesOnlyNewDays() {
+        LocalDate today = LocalDate.now();
+        LocalDate stale = today.minusDays(30);
+        List<Feat> mixed = List.of(
+                new Feat("n1", List.of(), "A", "e", today, "fresh", ""),
+                new Feat("n2", List.of(), "A", "e", today.minusDays(3), "recent", ""),
+                new Feat("o1", List.of(), "A", "e", stale, "old", ""));
+        Scryer scryer = new Scryer(mixed);
+        var last7 = scryer.scryRecent(7);
+        assertEquals(2, mixed.stream().filter(last7).count());
+        assertEquals(0, mixed.stream().filter(last7)
+                .filter(f -> f.summary().equals("old")).count());
+        // A non-positive window matches everything.
+        assertEquals(3, mixed.stream().filter(scryer.scryRecent(0)).count());
+    }
+
+    @Test
+    void scryByHeroMatchesExactly() {
+        Scryer scryer = new Scryer(feats);
+        var alice = scryer.scryByHero("alice");
+        assertEquals(2, feats.stream().filter(alice).count());
+        var nobody = scryer.scryByHero("zoro");
+        assertEquals(0, feats.stream().filter(nobody).count());
+        // Blank hero matches everything.
+        assertEquals(3, feats.stream().filter(scryer.scryByHero("")).count());
+    }
+
+    @Test
+    void heroesListPreservesFirstSeenOrder() {
+        Scryer scryer = new Scryer(feats);
+        assertEquals(List.of("Alice", "Bob"), scryer.heroes());
+    }
+
+    @Test
+    void heroesListSkipsNullAuthors() {
+        List<Feat> sparse = List.of(
+                new Feat("x", List.of(), null, null, D, "s", ""),
+                new Feat("y", List.of(), "Bob", null, D, "s", ""));
+        Scryer scryer = new Scryer(sparse);
+        assertEquals(List.of("Bob"), scryer.heroes());
+    }
 }

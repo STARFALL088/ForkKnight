@@ -67,6 +67,8 @@ public class App extends Application {
     private ComboBox<String> bannerBox;
     private TextField scryField;
     private ComboBox<Scryer.Scope> scryScopeBox;
+    private ComboBox<String> recentBox;
+    private ComboBox<String> heroBox;
     private ComboBox<String> sigilBox;
     private ComboBox<String> allyBox;
     private Button summonKamuiBtn;
@@ -244,12 +246,28 @@ public class App extends Application {
         scryScopeBox.getSelectionModel().selectFirst();
         scryField.textProperty().addListener((obs, o, n) -> applyScrying());
         scryScopeBox.valueProperty().addListener((obs, o, n) -> applyScrying());
+
+        Label recentLabel = new Label("Days:");
+        recentBox = new ComboBox<>();
+        recentBox.getItems().addAll("All", "7", "30", "90");
+        recentBox.getSelectionModel().selectFirst();
+        recentBox.setPrefWidth(80);
+        recentBox.valueProperty().addListener((obs, o, n) -> applyScrying());
+
+        heroBox = new ComboBox<>();
+        heroBox.setPromptText("Any hero");
+        heroBox.setPrefWidth(130);
+        heroBox.valueProperty().addListener((obs, o, n) -> applyScrying());
+
         Button clearScryBtn = new Button("Still");
         clearScryBtn.setOnAction(e -> {
             scryField.clear();
+            recentBox.getSelectionModel().selectFirst();
+            heroBox.getSelectionModel().clearSelection();
             scryField.requestFocus();
         });
-        HBox scryRow = new HBox(8, scryLabel, scryField, scryScopeBox, clearScryBtn);
+        HBox scryRow = new HBox(8, scryLabel, scryField, scryScopeBox,
+                recentLabel, recentBox, heroBox, clearScryBtn);
         scryRow.setPadding(new Insets(5, 10, 5, 10));
 
         talePane = new TalePane();
@@ -552,6 +570,7 @@ public class App extends Application {
         };
         task.setOnSucceeded(e -> {
             chronicleData.setAll(task.getValue().rows());
+            refreshHeroLens();
             applyScrying();
             if (chronicleData.isEmpty()) {
                 chronicleTable.setPlaceholder(new Label("The chronicle is empty."));
@@ -570,25 +589,69 @@ public class App extends Application {
 
     private Scryer scryer;
 
+    /** Applies every scrying lens together: text AND recency AND hero. */
     private void applyScrying() {
-        String query = scryField.getText();
         if (scryer == null) {
             return;
         }
+        String query = scryField.getText();
         Scryer.Scope scope = scryScopeBox.getValue();
-        if (query == null || query.isBlank()) {
+
+        Predicate<Weave.Woven> combined = null;
+        int lensCount = 0;
+
+        if (query != null && !query.isBlank()) {
+            Predicate<Feat> text = scryer.predicateFor(query, scope);
+            combined = woven -> text.test(woven.feat());
+            lensCount++;
+        }
+        String days = recentBox.getSelectionModel().getSelectedItem();
+        if (days != null && !days.equals("All")) {
+            try {
+                Predicate<Feat> recent = scryer.scryRecent(Integer.parseInt(days));
+                Predicate<Weave.Woven> next = woven -> recent.test(woven.feat());
+                combined = combined == null ? next : combined.and(next);
+                lensCount++;
+            } catch (NumberFormatException ignored) {
+                // a custom value landed in the box: ignore it
+            }
+        }
+        String hero = heroBox.getSelectionModel().getSelectedItem();
+        if (hero != null && !hero.isBlank()) {
+            Predicate<Feat> byHero = scryer.scryByHero(hero);
+            Predicate<Weave.Woven> next = woven -> byHero.test(woven.feat());
+            combined = combined == null ? next : combined.and(next);
+            lensCount++;
+        }
+
+        if (combined == null) {
             chronicleTable.setItems(chronicleData);
             statusBar.setText(chronicleData.size() + " feats");
             return;
         }
-        Predicate<Weave.Woven> predicate = woven ->
-                scryer.predicateFor(query, scope).test(woven.feat());
-        chronicleTable.setItems(chronicleData.filtered(predicate::test));
+        Predicate<Weave.Woven> lens = combined;
+        chronicleTable.setItems(chronicleData.filtered(lens::test));
         int shown = chronicleTable.getItems().size();
         statusBar.setText(shown + " of " + chronicleData.size()
-                + " feats answer \"" + query.strip() + "\"");
+                + " feats answer the scry");
         if (shown == 0 && !chronicleData.isEmpty()) {
             chronicleTable.setPlaceholder(new Label("The scry found nothing."));
+        } else {
+            chronicleTable.setPlaceholder(null);
+        }
+    }
+
+    /** Refreshes the hero lens options from the current trail. */
+    private void refreshHeroLens() {
+        if (scryer == null) {
+            return;
+        }
+        String chosen = heroBox.getSelectionModel().getSelectedItem();
+        heroBox.getItems().setAll(scryer.heroes());
+        if (chosen != null && heroBox.getItems().contains(chosen)) {
+            heroBox.getSelectionModel().select(chosen);
+        } else {
+            heroBox.getSelectionModel().clearSelection();
         }
     }
 

@@ -1,5 +1,6 @@
 package forkknight.core;
 
+import java.time.LocalDate;
 import java.util.ArrayList;
 import java.util.Collections;
 import java.util.HashMap;
@@ -152,6 +153,39 @@ public final class Scryer {
         String q = query == null ? "" : query.strip().toLowerCase();
         String[] words = q.isEmpty() ? new String[0] : q.split("\\s+");
         return feat -> q.isEmpty() || matches(feat, q, words, scope);
+    }
+
+    /**
+     * Range scrying: feats sealed within the last {@code days} days
+     * (inclusive of today). Days <= 0 matches everything.
+     */
+    public Predicate<Feat> scryRecent(int days) {
+        if (days <= 0) {
+            return feat -> true;
+        }
+        LocalDate cutoff = LocalDate.now().minusDays(days - 1);
+        return feat -> feat.date() != null && !feat.date().isBefore(cutoff);
+    }
+
+    /** Range scrying: feats sealed by the named hero (case-insensitive). */
+    public Predicate<Feat> scryByHero(String hero) {
+        if (hero == null || hero.isBlank()) {
+            return feat -> true;
+        }
+        String needle = hero.strip().toLowerCase();
+        return feat -> feat.author() != null
+                && feat.author().toLowerCase().equals(needle);
+    }
+
+    /** The distinct heroes of the indexed trail, in first-seen order. */
+    public List<String> heroes() {
+        java.util.Set<String> seen = new java.util.LinkedHashSet<>();
+        for (Feat feat : feats) {
+            if (feat.author() != null && !feat.author().isBlank()) {
+                seen.add(feat.author());
+            }
+        }
+        return new ArrayList<>(seen);
     }
 
     // ------------------------------------------------------------------
