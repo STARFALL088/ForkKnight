@@ -105,6 +105,96 @@ public class GitService {
         return run("rev-parse", "--abbrev-ref", "HEAD").trim();
     }
 
+    /**
+     * Working-copy changes. Index (staged) and worktree (unstaged) entries
+     * are parsed from machine-readable NUL-separated porcelain output:
+     * entries are "XY path\0", except renames/copies which carry the old
+     * path in an extra trailing token: "XY newPath\0oldPath\0".
+     */
+    public List<WorkDirChange> status() throws IOException, InterruptedException {
+        String out = runNul("status", "--porcelain", "-z");
+        List<WorkDirChange> changes = new ArrayList<>();
+        String[] tokens = out.split("\0", -1);
+        for (int i = 0; i < tokens.length; i++) {
+            String token = tokens[i];
+            if (token.length() < 4) {
+                continue;
+            }
+            String x = token.substring(0, 1);   // staged (index) status
+            String y = token.substring(1, 2);   // unstaged (worktree) status
+            String path = token.substring(3);
+            if (path.isBlank()) {
+                continue;
+            }
+            // Untracked/ignored: one entry, never staged, no rename payload.
+            if (x.equals("?") || x.equals("!")) {
+                changes.add(new WorkDirChange(path, path, x, false));
+                continue;
+            }
+            String oldPath = null;
+            if (x.equals("R") || x.equals("C")) {
+                if (i + 1 < tokens.length && !tokens[i + 1].isBlank()) {
+                    oldPath = tokens[i + 1];
+                    i++;
+                }
+            }
+            String effectiveOld = oldPath != null ? oldPath : path;
+            if (!x.equals(" ") && !x.isEmpty()) {
+                changes.add(new WorkDirChange(path, effectiveOld, x, true));
+            }
+            if (!y.equals(" ") && !y.isEmpty()) {
+                changes.add(new WorkDirChange(path, effectiveOld, y, false));
+            }
+        }
+        return changes;
+    }
+
+    /** Stages the given file (git add --). */
+    public void stage(String path) throws IOException, InterruptedException {
+        run("add", "--", path);
+    }
+
+    /** Stages every change (git add -A). */
+    public void stageAll() throws IOException, InterruptedException {
+        run("add", "-A");
+    }
+
+    /** Unstages the given file (git reset --). */
+    public void unstage(String path) throws IOException, InterruptedException {
+        run("reset", "--", path);
+    }
+
+    /** Restores the given file in the worktree from the index (checkout --). */
+    public void discard(String path) throws IOException, InterruptedException {
+        run("checkout", "--", path);
+    }
+
+    /** Deletes an untracked file (worktree only, never a committed file). */
+    public void deleteUntracked(String path) throws IOException, InterruptedException {
+        File file = new File(repoDir, path);
+        if (file.isFile()) {
+            if (!file.delete()) {
+                throw new IOException("Could not delete " + path);
+            }
+        }
+    }
+
+    /** Commits the staged changes with the given message. */
+    public Commit commit(String message) throws IOException, InterruptedException {
+        run("commit", "-m", message);
+        String hash = run("rev-parse", "HEAD").trim();
+        return new Commit(hash, null, null, LocalDate.now(), message, "");
+    }
+
+    /** Throws if there is nothing to commit (no staged changes). */
+    public void requireStaged() throws IOException, InterruptedException {
+        List<WorkDirChange> staged = status().stream()
+                .filter(WorkDirChange::staged).toList();
+        if (staged.isEmpty()) {
+            throw new IOException("Nothing to commit: no staged changes.");
+        }
+    }
+
     /** Unified diff of the given commit against its first parent. */
     public String showDiff(String hash) throws IOException, InterruptedException {
         return run("show", "--format=fuller", "--no-ext-diff", hash, "--");

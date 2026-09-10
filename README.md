@@ -49,9 +49,10 @@ java --module-path /path/to/javafx-sdk-24.0.2/lib --add-modules javafx.controls,
 2. ~~Use JGit or ProcessBuilder to fetch Git log and display commits.~~ (done)
 3. ~~Show a commit graph on a Canvas or using a list.~~ (done, table-based)
 4. ~~Allow selecting a commit to view the file tree and diff.~~ (done)
-5. Add branch selector / show all branches in the log.
-6. Stage and commit changes from within the app.
+5. ~~Add branch selector / show all branches in the log.~~ (done)
+6. ~~Stage and commit changes from within the app.~~ (done)
 7. Search/filter the commit history.
+8. Create/switch/delete branches from the UI.
 
 ## Notes
 

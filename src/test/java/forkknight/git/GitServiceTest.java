@@ -14,7 +14,6 @@ class GitServiceTest {
 
     @TempDir
     Path tempDir;
-
     private GitService initRepo() throws IOException, InterruptedException {
         Path repo = tempDir.resolve("repo");
         Files.createDirectories(repo);
@@ -202,5 +201,97 @@ class GitServiceTest {
         // The no-branch overload follows the current HEAD (main).
         List<Commit> headLog = service.log();
         assertEquals("main work", headLog.get(0).summary());
+    }
+
+    // ------------------------------------------------------------------
+    // Working-copy status, staging, commits
+    // ------------------------------------------------------------------
+
+    @Test
+    void statusParsesStagedUnstagedAndUntracked() throws Exception {
+        GitService service = initRepo();
+        Path repo = service.getRepoDir().toPath();
+        Files.writeString(repo.resolve("base.txt"), "base\n");
+        git(service, "add", "base.txt");
+        git(service, "commit", "-qm", "base");
+        Files.writeString(repo.resolve("mod.txt"), "m1\n");
+        git(service, "add", "mod.txt");
+        Files.writeString(repo.resolve("mod.txt"), "m2\n");
+        Files.writeString(repo.resolve("new.txt"), "n\n");
+
+        List<WorkDirChange> changes = service.status();
+        // staged A mod.txt, unstaged M mod.txt, untracked new.txt
+        assertEquals(3, changes.size());
+        assertTrue(changes.stream().anyMatch(c -> c.staged() && c.statusCode().equals("A")
+                && c.newPath().equals("mod.txt")));
+        assertTrue(changes.stream().anyMatch(c -> !c.staged() && c.statusCode().equals("M")
+                && c.newPath().equals("mod.txt")));
+        assertTrue(changes.stream().anyMatch(c -> c.statusCode().equals("?")
+                && c.newPath().equals("new.txt")));
+    }
+
+    @Test
+    void statusParsesStagedRename() throws Exception {
+        GitService service = initRepo();
+        Path repo = service.getRepoDir().toPath();
+        Files.writeString(repo.resolve("a.txt"), "a\n");
+        git(service, "add", "a.txt");
+        git(service, "commit", "-qm", "add a");
+        git(service, "mv", "a.txt", "b.txt");
+
+        List<WorkDirChange> changes = service.status();
+        assertEquals(1, changes.size());
+        WorkDirChange change = changes.get(0);
+        assertTrue(change.staged());
+        assertEquals("R", change.statusCode());
+        assertEquals("a.txt", change.oldPath());
+        assertEquals("b.txt", change.newPath());
+    }
+
+    @Test
+    void stageAndCommitRoundTrip() throws Exception {
+        GitService service = initRepo();
+        Path repo = service.getRepoDir().toPath();
+        Files.writeString(repo.resolve("f.txt"), "content\n");
+
+        service.stage("f.txt");
+        assertTrue(service.status().stream().anyMatch(WorkDirChange::staged));
+
+        Commit head = service.commit("add f");
+        assertEquals("add f", head.summary());
+        assertTrue(service.status().isEmpty());
+        assertEquals("add f", service.log().get(0).summary());
+    }
+
+    @Test
+    void unstageRemovesFromIndex() throws Exception {
+        GitService service = initRepo();
+        Path repo = service.getRepoDir().toPath();
+        Files.writeString(repo.resolve("g.txt"), "g\n");
+        service.stage("g.txt");
+        service.unstage("g.txt");
+        List<WorkDirChange> changes = service.status();
+        assertEquals(1, changes.size());
+        assertFalse(changes.get(0).staged());
+        assertEquals("?", changes.get(0).statusCode());
+    }
+
+    @Test
+    void commitWithoutStagedChangesFails() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        assertThrows(IOException.class, service::requireStaged);
+    }
+
+    @Test
+    void discardRestoresWorktreeFile() throws Exception {
+        GitService service = initRepo();
+        Path repo = service.getRepoDir().toPath();
+        Files.writeString(repo.resolve("h.txt"), "original\n");
+        git(service, "add", "h.txt");
+        git(service, "commit", "-qm", "add h");
+        Files.writeString(repo.resolve("h.txt"), "changed\n");
+        service.discard("h.txt");
+        assertEquals("original\n", Files.readString(repo.resolve("h.txt")));
     }
 }

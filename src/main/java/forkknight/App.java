@@ -3,6 +3,7 @@ package forkknight;
 import forkknight.git.Commit;
 import forkknight.git.FileChange;
 import forkknight.git.GitService;
+import forkknight.git.WorkDirChange;
 import javafx.application.Application;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
@@ -121,9 +122,24 @@ public class App extends Application {
         center.setDividerPosition(0, 0.55);
         SplitPane.setResizableWithParent(detailsView.getNode(), true);
 
+        TabPane tabs = new TabPane();
+        Tab historyTab = new Tab("History");
+        historyTab.setClosable(false);
+        historyTab.setContent(center);
+        Tab workTab = new Tab("Working changes");
+        workTab.setClosable(false);
+        workTab.setContent(buildWorkingChangesView());
+        tabs.getTabs().addAll(historyTab, workTab);
+        tabs.getSelectionModel().selectedItemProperty().addListener(
+                (obs, oldTab, newTab) -> {
+                    if (newTab == workTab) {
+                        loadWorkingChanges();
+                    }
+                });
+
         BorderPane root = new BorderPane();
         root.setTop(top);
-        root.setCenter(center);
+        root.setCenter(tabs);
         root.setBottom(statusBar);
 
         Scene scene = new Scene(root, 1000, 700);
@@ -229,6 +245,169 @@ public class App extends Application {
         detailsView.showCommit(git, commit);
         statusBar.setText("Loading commit " + commit.shortHash() + "...");
         detailsView.setOnLoaded(() -> statusBar.setText(commitData.size() + " commits"));
+    }
+
+    // ------------------------------------------------------------------
+    // Working changes tab
+    // ------------------------------------------------------------------
+
+    private TableView<WorkDirChange> workTable;
+    private final ObservableList<WorkDirChange> workData = FXCollections.observableArrayList();
+
+    private javafx.scene.Node buildWorkingChangesView() {
+        workTable = new TableView<>();
+        workTable.setPlaceholder(new Label("No changes"));
+
+        TableColumn<WorkDirChange, String> stateCol = new TableColumn<>("State");
+        stateCol.setCellValueFactory(cell -> new SimpleStringProperty(
+                cell.getValue().staged() ? "Staged" : "Unstaged"));
+        stateCol.setMinWidth(80);
+
+        TableColumn<WorkDirChange, String> statusCol = new TableColumn<>("Status");
+        statusCol.setCellValueFactory(cell -> new SimpleStringProperty(
+                cell.getValue().description()));
+        statusCol.setMinWidth(80);
+
+        TableColumn<WorkDirChange, String> pathCol = new TableColumn<>("Path");
+        pathCol.setCellValueFactory(cell -> new SimpleStringProperty(
+                cell.getValue().isRename()
+                        ? cell.getValue().oldPath() + " -> " + cell.getValue().newPath()
+                        : cell.getValue().newPath()));
+        pathCol.setMinWidth(300);
+
+        workTable.getColumns().addAll(stateCol, statusCol, pathCol);
+        workTable.setItems(workData);
+        workTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        workTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+
+        Button refreshBtn = new Button("Refresh");
+        refreshBtn.setOnAction(e -> loadWorkingChanges());
+        Button stageBtn = new Button("Stage");
+        stageBtn.setOnAction(e -> stageSelected(true));
+        Button unstageBtn = new Button("Unstage");
+        unstageBtn.setOnAction(e -> stageSelected(false));
+        Button stageAllBtn = new Button("Stage all");
+        stageAllBtn.setOnAction(e -> runGitAction("Stage all", () -> git.stageAll()));
+        Button commitBtn = new Button("Commit...");
+        commitBtn.setOnAction(e -> commitStaged());
+        Button discardBtn = new Button("Discard changes...");
+        discardBtn.setOnAction(e -> discardSelected());
+
+        HBox buttons = new HBox(8, refreshBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
+                stageBtn, unstageBtn, stageAllBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
+                commitBtn, discardBtn);
+        buttons.setPadding(new Insets(8));
+
+        BorderPane pane = new BorderPane();
+        pane.setTop(buttons);
+        pane.setCenter(workTable);
+        return pane;
+    }
+
+    private void loadWorkingChanges() {
+        if (git == null) {
+            return;
+        }
+        GitService service = git;
+        Task<List<WorkDirChange>> task = new Task<>() {
+            @Override
+            protected List<WorkDirChange> call() throws Exception {
+                return service.status();
+            }
+        };
+        task.setOnSucceeded(e -> workData.setAll(task.getValue()));
+        task.setOnFailed(e -> showError("Failed to load status: "
+                + task.getException().getMessage()));
+        Thread thread = new Thread(task, "status-loader");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void stageSelected(boolean stage) {
+        List<WorkDirChange> selected = List.copyOf(workTable.getSelectionModel().getSelectedItems());
+        if (selected.isEmpty()) {
+            return;
+        }
+        runGitAction(stage ? "Stage" : "Unstage", () -> {
+            for (WorkDirChange change : selected) {
+                if (stage) {
+                    git.stage(change.newPath());
+                } else {
+                    git.unstage(change.newPath());
+                }
+            }
+        });
+    }
+
+    private void commitStaged() {
+        try {
+            git.requireStaged();
+        } catch (Exception ex) {
+            showError(ex.getMessage());
+            return;
+        }
+        CommitDialog dialog = new CommitDialog(git, null);
+        dialog.message().ifPresent(message -> {
+            if (message.isBlank()) {
+                return;
+            }
+            runGitAction("Commit", () -> git.commit(message.trim()));
+        });
+    }
+
+    private void discardSelected() {
+        List<WorkDirChange> selected = List.copyOf(workTable.getSelectionModel().getSelectedItems());
+        if (selected.isEmpty()) {
+            return;
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Discard changes in " + selected.size() + " selected file(s)?\n"
+                        + "This cannot be undone.",
+                ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText("Discard changes");
+        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
+                runGitAction("Discard", () -> {
+                    for (WorkDirChange change : selected) {
+                        if (change.staged()) {
+                            git.unstage(change.newPath());
+                        }
+                        if (!change.statusCode().equals("?") && !change.statusCode().equals("D")) {
+                            git.discard(change.newPath());
+                        } else if (change.statusCode().equals("?")) {
+                            git.deleteUntracked(change.newPath());
+                        }
+                    }
+                }));
+    }
+
+    /** Runs a mutating git action on a background thread, then refreshes. */
+    private void runGitAction(String name, GitAction action) {
+        if (git == null) {
+            return;
+        }
+        statusBar.setText(name + "...");
+        Task<Void> task = new Task<>() {
+            @Override
+            protected Void call() throws Exception {
+                action.run();
+                return null;
+            }
+        };
+        task.setOnSucceeded(e -> {
+            statusBar.setText(name + " done");
+            loadWorkingChanges();
+            loadCommits(branchBox.getSelectionModel().getSelectedItem());
+        });
+        task.setOnFailed(e -> showError(name + " failed: "
+                + task.getException().getMessage()));
+        Thread thread = new Thread(task, "git-action");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    @FunctionalInterface
+    private interface GitAction {
+        void run() throws Exception;
     }
 
     private void showError(String message) {
