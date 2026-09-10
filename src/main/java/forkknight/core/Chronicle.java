@@ -325,6 +325,39 @@ public class Chronicle {
         command("banner").flags(force ? "-D" : "-d").target(name).run();
     }
 
+    /**
+     * Fuses the given banner into the raised one (a merge). When the
+     * trails meet cleanly the fusion is sealed at once with a default
+     * message; otherwise the realm enters a conflicted state and the
+     * exception carries the dispatches in dispute.
+     */
+    public Feat fuseBanner(String name) throws IOException, InterruptedException {
+        requireClearedField();
+        command("fusion").flags("--no-ff", "-m",
+                "Fusion: join " + name + " into " + activeBanner()).target(name).run();
+        String hash = command("mark").flags("HEAD").run().trim();
+        return new Feat(hash, List.of(), null, null, LocalDate.now(),
+                "Fusion: join " + name, "");
+    }
+
+    /**
+     * True when the realm is in a conflicted fusion (a merge in
+     * progress with unresolved dispatches).
+     */
+    public boolean fusionInDispute() throws IOException, InterruptedException {
+        String out = command("muster").flags("--porcelain").run();
+        return out.lines().anyMatch(line -> line.startsWith("UU")
+                || line.startsWith("AA") || line.startsWith("DD"));
+    }
+
+    /**
+     * Abandons a fusion in dispute and restores the realm to the state
+     * before the fusion began (merge --abort).
+     */
+    public void abandonDisputedFusion() throws IOException, InterruptedException {
+        command("fusion").flags("--abort").run();
+    }
+
     // ------------------------------------------------------------------
     // Field state (working copy), muster, enlist, seal
     // ------------------------------------------------------------------

@@ -28,6 +28,7 @@ import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
 import java.io.File;
+import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
@@ -110,6 +111,9 @@ public class App extends Application {
         Button marchBtn = new Button("March");
         marchBtn.setDisable(true);
         marchBtn.setOnAction(e -> marchToSelectedBanner());
+        Button fuseBtn = new Button("Fuse");
+        fuseBtn.setDisable(true);
+        fuseBtn.setOnAction(e -> fuseSelectedBanner());
         Button fellBtn = new Button("Fell...");
         fellBtn.setDisable(true);
         fellBtn.setOnAction(e -> fellSelectedBanner());
@@ -117,6 +121,7 @@ public class App extends Application {
             boolean off = is;
             raiseBannerBtn.setDisable(off);
             marchBtn.setDisable(off);
+            fuseBtn.setDisable(off);
             fellBtn.setDisable(off);
             sigilBox.setDisable(off);
             pressSigilBtn.setDisable(off);
@@ -141,7 +146,8 @@ public class App extends Application {
         meltSigilBtn.setDisable(true);
         meltSigilBtn.setOnAction(e -> meltSelectedSigil());
 
-        HBox bannerRow = new HBox(10, bannerLabel, bannerBox, raiseBannerBtn, marchBtn, fellBtn,
+        HBox bannerRow = new HBox(10, bannerLabel, bannerBox, raiseBannerBtn,
+                marchBtn, fuseBtn, fellBtn,
                 new Separator(),
                 sigilLabel, sigilBox, pressSigilBtn, meltSigilBtn);
         bannerRow.setPadding(new Insets(0, 10, 10, 10));
@@ -574,6 +580,61 @@ public class App extends Application {
                 "Fell the banner '" + target + "'?\nUnmerged feats will be lost.",
                 () -> runRealmAction("Fell '" + target + "'",
                         () -> chronicle.fellBanner(target, false), this::loadBanners));
+    }
+
+    /** Fuses the selected banner into the raised one. */
+    private void fuseSelectedBanner() {
+        if (chronicle == null) {
+            return;
+        }
+        String target = bannerBox.getSelectionModel().getSelectedItem();
+        if (target == null || target.equals(activeBannerName())) {
+            showError("Choose another banner to fuse into this one.");
+            return;
+        }
+        confirmDialog("Fusion",
+                "Fuse '" + target + "' into '" + activeBannerName() + "'?",
+                () -> runRealmAction("Fusion with '" + target + "'",
+                        () -> {
+                            try {
+                                chronicle.fuseBanner(target);
+                            } catch (IOException ex) {
+                                // A disputed fusion is not a hard failure:
+                                // surface it, offer abandonment.
+                                if (chronicle.fusionInDispute()) {
+                                    javafx.application.Platform.runLater(() ->
+                                            offerFusionAbandon(target));
+                                }
+                                throw ex;
+                            }
+                        },
+                        () -> {
+                            loadBanners();
+                            surveyTrail(null);
+                        }));
+    }
+
+    /** Shown when a fusion ends in conflict; lets the knight withdraw. */
+    private void offerFusionAbandon(String target) {
+        Alert dispute = new Alert(Alert.AlertType.WARNING,
+                "The fusion with '" + target + "' is in dispute.\n"
+                        + "Resolve the dispatches outside ForkKnight, or withdraw.",
+                new ButtonType("Withdraw", ButtonBar.ButtonData.YES),
+                new ButtonType("Keep", ButtonBar.ButtonData.NO));
+        dispute.setHeaderText("Disputed Fusion");
+        dispute.showAndWait().ifPresent(choice -> {
+            if (choice.getButtonData() == ButtonBar.ButtonData.YES) {
+                runRealmAction("Withdraw from fusion",
+                        chronicle::abandonDisputedFusion,
+                        () -> {
+                            loadBanners();
+                            surveyTrail(null);
+                            statusBar.setText("Fusion withdrawn; the realm stands as before.");
+                        });
+            } else {
+                statusBar.setText("Fusion dispute left in place - resolve it, then muster again.");
+            }
+        });
     }
 
     private String activeBannerName() {

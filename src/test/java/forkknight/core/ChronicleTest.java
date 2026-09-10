@@ -334,4 +334,77 @@ class ChronicleTest {
         chronicle.vanquishUnscouted("ghost.txt");
         assertFalse(Files.exists(realm.resolve("ghost.txt")));
     }
+
+    // ------------------------------------------------------------------
+    // Fusion (merge)
+    // ------------------------------------------------------------------
+
+    @Test
+    void fuseBannerSealsAFusionFeat() throws Exception {
+        Chronicle chronicle = initRealm();
+        Path realm = chronicle.getRealmDir().toPath();
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "base");
+        dragon(realm, "checkout", "-qb", "side");
+        Files.writeString(realm.resolve("s.txt"), "side\n");
+        dragon(realm, "add", "s.txt");
+        dragon(realm, "commit", "-qm", "side feat");
+        dragon(realm, "checkout", "-q", "main");
+        Files.writeString(realm.resolve("m.txt"), "main\n");
+        dragon(realm, "add", "m.txt");
+        dragon(realm, "commit", "-qm", "main feat");
+
+        assertFalse(chronicle.fusionInDispute());
+        Feat fusion = chronicle.fuseBanner("side");
+        assertTrue(fusion.hash() != null && !fusion.hash().isBlank());
+        // The newest feat on main is now a fusion with two parents.
+        Feat head = chronicle.surveyTrail().get(0);
+        assertTrue(head.isFusion());
+        assertEquals(2, head.parentHashes().size());
+        assertFalse(chronicle.fusionInDispute());
+        // Both sides' work is present in the tree.
+        assertTrue(Files.exists(realm.resolve("s.txt")));
+        assertTrue(Files.exists(realm.resolve("m.txt")));
+    }
+
+    @Test
+    void fuseBannerRefusesMuddyField() throws Exception {
+        Chronicle chronicle = initRealm();
+        Path realm = chronicle.getRealmDir().toPath();
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "base");
+        dragon(realm, "checkout", "-qb", "side");
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "side feat");
+        dragon(realm, "checkout", "-q", "main");
+        Files.writeString(realm.resolve("d.txt"), "dirt\n");
+        assertThrows(IOException.class, () -> chronicle.fuseBanner("side"));
+        // No fusion feat was sealed.
+        assertFalse(chronicle.surveyTrail().get(0).isFusion());
+    }
+
+    @Test
+    void disputedFusionCanBeAbandoned() throws Exception {
+        Chronicle chronicle = initRealm();
+        Path realm = chronicle.getRealmDir().toPath();
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "base");
+        dragon(realm, "checkout", "-qb", "side");
+        Files.writeString(realm.resolve("c.txt"), "side version\n");
+        dragon(realm, "add", "c.txt");
+        dragon(realm, "commit", "-qm", "side writes c");
+        dragon(realm, "checkout", "-q", "main");
+        Files.writeString(realm.resolve("c.txt"), "main version\n");
+        dragon(realm, "add", "c.txt");
+        dragon(realm, "commit", "-qm", "main writes c");
+
+        // Both sides touched the same path: the fusion enters a dispute.
+        try {
+            chronicle.fuseBanner("side");
+        } catch (IOException expected) {
+            // the dragon refuses to auto-seal a conflicted fusion
+        }
+        assertTrue(chronicle.fusionInDispute());
+        chronicle.abandonDisputedFusion();
+        assertFalse(chronicle.fusionInDispute());
+        // The trail is back to the pre-fusion state.
+        assertFalse(chronicle.surveyTrail().get(0).isFusion());
+        assertEquals("main writes c", chronicle.surveyTrail().get(0).summary());
+    }
 }
