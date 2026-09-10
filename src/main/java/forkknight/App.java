@@ -75,7 +75,24 @@ public class App extends Application {
                 loadCommits(branch);
             }
         });
-        HBox branchBoxUi = new HBox(10, branchLabel, branchBox);
+
+        Button newBranchBtn = new Button("New...");
+        newBranchBtn.setDisable(true);
+        newBranchBtn.setOnAction(e -> createBranchDialog());
+        Button switchBtn = new Button("Switch");
+        switchBtn.setDisable(true);
+        switchBtn.setOnAction(e -> switchToSelectedBranch());
+        Button deleteBtn = new Button("Delete...");
+        deleteBtn.setDisable(true);
+        deleteBtn.setOnAction(e -> deleteSelectedBranch());
+        branchBox.disableProperty().addListener((obs, was, is) -> {
+            boolean disabled = is;
+            newBranchBtn.setDisable(disabled);
+            switchBtn.setDisable(disabled);
+            deleteBtn.setDisable(disabled);
+        });
+
+        HBox branchBoxUi = new HBox(10, branchLabel, branchBox, newBranchBtn, switchBtn, deleteBtn);
         branchBoxUi.setPadding(new Insets(0, 10, 10, 10));
         branchBoxUi.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
@@ -296,6 +313,83 @@ public class App extends Application {
     }
 
     // ------------------------------------------------------------------
+    // Branch management
+    // ------------------------------------------------------------------
+
+    private static final java.util.regex.Pattern BRANCH_NAME =
+            java.util.regex.Pattern.compile("[^-][a-zA-Z0-9._/-]*");
+
+    private void createBranchDialog() {
+        if (git == null) {
+            return;
+        }
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("ForkKnight - New Branch");
+        dialog.setHeaderText("Create a new branch at HEAD");
+        dialog.setContentText("Branch name:");
+        dialog.showAndWait().map(name -> name.strip()).ifPresent(name -> {
+            if (name.isEmpty()) {
+                return;
+            }
+            if (isBranchNameInvalid(name)) {
+                showError("Invalid branch name: " + name);
+                return;
+            }
+            runGitAction("Create branch '" + name + "'", () -> git.createBranch(name),
+                    () -> loadBranches());
+        });
+    }
+
+    private void switchToSelectedBranch() {
+        if (git == null) {
+            return;
+        }
+        String target = branchBox.getSelectionModel().getSelectedItem();
+        String current = branchBox.getItems().isEmpty() ? null : branchBox.getItems().get(0);
+        if (target == null || target.equals(current)) {
+            showError("Select a different branch to switch to.");
+            return;
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Switch to branch '" + target + "'?", ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText("Switch branch");
+        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
+                runGitAction("Switch to '" + target + "'", () -> git.switchBranch(target),
+                        () -> {
+                            loadBranches();
+                            loadCommits(target);
+                        }));
+    }
+
+    private void deleteSelectedBranch() {
+        if (git == null) {
+            return;
+        }
+        String target = branchBox.getSelectionModel().getSelectedItem();
+        String current = branchBox.getItems().isEmpty() ? null : branchBox.getItems().get(0);
+        if (target == null) {
+            showError("Select a branch to delete.");
+            return;
+        }
+        if (target.equals(current)) {
+            showError("Cannot delete the current branch.");
+            return;
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Delete branch '" + target + "'?\nUnmerged commits will be lost.",
+                ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText("Delete branch");
+        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
+                runGitAction("Delete '" + target + "'", () -> git.deleteBranch(target, false),
+                        () -> loadBranches()));
+    }
+
+    private boolean isBranchNameInvalid(String name) {
+        return !BRANCH_NAME.matcher(name).matches() || name.endsWith(".lock")
+                || name.endsWith("/") || name.contains("..") || name.startsWith("-");
+    }
+
+    // ------------------------------------------------------------------
     // Working changes tab
     // ------------------------------------------------------------------
 
@@ -430,6 +524,11 @@ public class App extends Application {
 
     /** Runs a mutating git action on a background thread, then refreshes. */
     private void runGitAction(String name, GitAction action) {
+        runGitAction(name, action, null);
+    }
+
+    /** Variant with an extra FX-thread callback after success. */
+    private void runGitAction(String name, GitAction action, Runnable onDone) {
         if (git == null) {
             return;
         }
@@ -445,6 +544,9 @@ public class App extends Application {
             statusBar.setText(name + " done");
             loadWorkingChanges();
             loadCommits(branchBox.getSelectionModel().getSelectedItem());
+            if (onDone != null) {
+                onDone.run();
+            }
         });
         task.setOnFailed(e -> showError(name + " failed: "
                 + task.getException().getMessage()));

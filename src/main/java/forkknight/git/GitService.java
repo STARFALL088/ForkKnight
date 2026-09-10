@@ -179,6 +179,50 @@ public class GitService {
         }
     }
 
+    /** Creates a new branch pointing at HEAD, without checking it out. */
+    public void createBranch(String name) throws IOException, InterruptedException {
+        run("branch", name);
+    }
+
+    /**
+     * Creates a new branch at HEAD and checks it out. Refuses when the
+     * worktree is dirty so uncommitted changes never ride along.
+     */
+    public void switchToNewBranch(String name) throws IOException, InterruptedException {
+        requireCleanWorktree();
+        run("switch", "--create", name);
+    }
+
+    /** Checks out an existing local branch. Refuses on a dirty worktree. */
+    public void switchBranch(String name) throws IOException, InterruptedException {
+        requireCleanWorktree();
+        run("switch", name);
+    }
+
+    /**
+     * Deletes a local branch. Refuses to delete the current branch or one
+     * with unmerged changes unless {@code force} is set.
+     */
+    public void deleteBranch(String name, boolean force) throws IOException, InterruptedException {
+        if (name.equals(currentBranch())) {
+            throw new IOException("Cannot delete the current branch: " + name);
+        }
+        if (force) {
+            run("branch", "-D", name);
+        } else {
+            run("branch", "-d", name);
+        }
+    }
+
+    /** Throws when the worktree has staged or unstaged changes. */
+    public void requireCleanWorktree() throws IOException, InterruptedException {
+        List<WorkDirChange> changes = status();
+        if (!changes.isEmpty()) {
+            throw new IOException("Uncommitted changes in " + changes.size()
+                    + " file(s); commit or discard them first.");
+        }
+    }
+
     /** Commits the staged changes with the given message. */
     public Commit commit(String message) throws IOException, InterruptedException {
         run("commit", "-m", message);

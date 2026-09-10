@@ -294,4 +294,74 @@ class GitServiceTest {
         service.discard("h.txt");
         assertEquals("original\n", Files.readString(repo.resolve("h.txt")));
     }
+
+    // ------------------------------------------------------------------
+    // Branch management
+    // ------------------------------------------------------------------
+
+    @Test
+    void createBranchPointsAtHead() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        service.createBranch("feature");
+        List<String> branches = service.branches();
+        assertTrue(branches.contains("feature"));
+        assertEquals("main", service.currentBranch());
+        // New branch points at the same commit as HEAD.
+        String head = service.log().get(0).hash();
+        assertEquals(head, service.log("feature", 1).get(0).hash());
+    }
+
+    @Test
+    void switchBranchMovesHead() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        service.switchToNewBranch("topic");
+        assertEquals("topic", service.currentBranch());
+        git(service, "commit", "-q", "--allow-empty", "-m", "topic work");
+        assertEquals("topic work", service.log().get(0).summary());
+
+        service.switchBranch("main");
+        assertEquals("main", service.currentBranch());
+        assertEquals("base", service.log().get(0).summary());
+    }
+
+    @Test
+    void switchBranchRefusesDirtyWorktree() throws Exception {
+        GitService service = initRepo();
+        Path repo = service.getRepoDir().toPath();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        service.createBranch("other");
+        Files.writeString(repo.resolve("dirty.txt"), "d\n");
+        assertThrows(IOException.class, () -> service.switchBranch("other"));
+        assertEquals("main", service.currentBranch());
+    }
+
+    @Test
+    void deleteBranchRemovesRef() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        service.createBranch("doomed");
+        service.deleteBranch("doomed", false);
+        assertFalse(service.branches().contains("doomed"));
+    }
+
+    @Test
+    void deleteBranchRefusesCurrentBranch() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        assertThrows(IOException.class, () -> service.deleteBranch("main", false));
+    }
+
+    @Test
+    void deleteBranchRefusesUnmergedWithoutForce() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        service.switchToNewBranch("side");
+        git(service, "commit", "-q", "--allow-empty", "-m", "side work");
+        service.switchBranch("main");
+        assertThrows(IOException.class, () -> service.deleteBranch("side", false));
+        service.deleteBranch("side", true);
+        assertFalse(service.branches().contains("side"));
+    }
 }
