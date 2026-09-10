@@ -1,63 +1,92 @@
 # ForkKnight
 
-A lightweight desktop Git client/visualizer for the AP Lab JavaFX assignment.
+A lightweight desktop client for the realm's chronicles, written in JavaFX
+for the AP Lab assignment. Every git concept is re-imagined in knightly
+(and occasionally anime) vocabulary - the raw "git" tongue is confined to
+a single codex inside `Chronicle` and never leaks into the UI.
+
+## The Realm's Vocabulary
+
+| ForkKnight | Common tongue |
+|---|---|
+| Realm | repository |
+| Feat | commit |
+| Banner | branch |
+| Sigil | tag |
+| Chronicle | git history |
+| Survey the trail | git log |
+| Enlist | git add (stage) |
+| Release | git reset (unstage) |
+| Seal | git commit |
+| Muster | git status |
+| Dispatch | file change entry |
+| Toll of a feat | diff of a commit |
+| Recount | show (full diff) |
+| Raise / Fell a banner | create / delete a branch |
+| March to a banner | checkout a branch |
+| Fusion | merge |
+| Press / Melt a sigil | create / delete a tag |
+| Kamui (vanish / summon) | git stash push / pop |
+| Scry | search |
+| Night/Day Sight | dark/light theme |
+| Hero | author |
+| Banish | discard changes |
+| Vanquish | delete untracked file |
 
 ## Project Structure
 
-- `src/main/java/forkknight/` - Java source code
-- `build.gradle` - Gradle build script
-- `settings.gradle` - Gradle settings
-- `src/main/java/module-info.java` - Java module descriptor
+- `src/main/java/forkknight/core/` - the realm's heart:
+  - `Chronicle` - the command codex + engine (git CLI confined here)
+  - `Feat`, `Banner`, `Sigil`, `Dispatch` - domain records
+  - `Scryer` - trie + bigram inverted index search
+  - `Weave` - DAG lane assignment for the commit graph
+  - `Vault` - O(1) LRU cache for diffs
+- `src/main/java/forkknight/` - `App` (UI shell), `SealDialog`
+- `src/main/java/forkknight/ui/` - `TalePane` (feat details + diff)
+- `src/main/resources/forkknight/dark-theme.css` - Night Sight theme
+- `src/test/java/forkknight/core/` - unit tests
+
+## Algorithms & Data Structures
+
+- **Scryer**: a 43-slot sparse trie over commit tokens gives O(L) prefix
+  search; a bigram inverted index (token -> postings) intersects
+  multi-word queries with hash sets before any substring check runs.
+- **Weave**: first-fit lane assignment over the commit DAG using a
+  TreeSet free-lane pool - O(n log n) - keeps the drawn graph compact;
+  bloodline traversal is an explicit-stack DFS (stack-overflow safe to
+  50k+ depth).
+- **Vault**: access-ordered LinkedHashMap LRU - O(1) hit, miss and
+  evict - caching per-file diffs.
+- **Chronicle**: NUL-separated porcelain parsing (rename-aware), a
+  compile-time codex guard, and dual-stream subprocess draining with
+  timeouts.
 
 ## Prerequisites
 
 - JDK 17 or later (we tested with JDK 26)
 - JavaFX 24.0.2 (matching the version in build.gradle)
 
-## Setup
-
-### Option 1: Install OpenJFX via package manager (Arch Linux example)
-
-```bash
-sudo pacman -S openjfx
-```
-
-### Option 2: Manual download
-
-1. Download JavaFX SDK from https://gluonhq.com/products/javafx/
-2. Extract and note the path to the `lib` directory.
-
 ## Running the Application
-
-### Using Gradle (if JavaFX is set up via the plugin)
 
 ```bash
 ./gradlew run
 ```
 
-### Using Java directly (if you have JavaFX in a custom location)
-
-Replace `/path/to/javafx-sdk-24.0.2/lib` with the actual path.
+Or directly (replace the module path with your JavaFX install):
 
 ```bash
-java --module-path /path/to/javafx-sdk-24.0.2/lib --add-modules javafx.controls,javafx.fxml -cp build/classes/java/main forkknight.App
+java --module-path /path/to/javafx-sdk-24.0.2/lib \
+     --add-modules javafx.controls,javafx.fxml \
+     -cp build/classes/java/main:build/resources/main forkknight.App
 ```
 
-## Next Steps for Development
+## Testing
 
-1. ~~Implement a directory chooser to select a local Git repository.~~ (done)
-2. ~~Use JGit or ProcessBuilder to fetch Git log and display commits.~~ (done)
-3. ~~Show a commit graph on a Canvas or using a list.~~ (done, table-based)
-4. ~~Allow selecting a commit to view the file tree and diff.~~ (done)
-5. ~~Add branch selector / show all branches in the log.~~ (done)
-6. ~~Stage and commit changes from within the app.~~ (done)
-7. ~~Search/filter the commit history.~~ (done)
-8. ~~Create/switch/delete branches from the UI.~~ (done)
-9. ~~Create/switch to tags, or view the stash.~~ (done)
-10. Dark theme / UI polish.
+```bash
+./gradlew test
+```
 
-## Notes
-
-- Selecting a commit in the log shows its changed files (with add/delete/rename status) and the unified diff of the selected file.
-- All Git operations run on background threads to avoid blocking the UI.
-- Git access goes through the git CLI (see `GitService`); rename detection is enabled for changed-file listings.
+48 tests cover the Chronicle codex (surveys, tolls, muster, banners,
+sigils, Kamui), the Scryer (all scopes, prefixes, multi-word AND), the
+Weave (lanes, forks, recycling, deep bloodlines) and the Vault (LRU
+eviction, purge, capacity).

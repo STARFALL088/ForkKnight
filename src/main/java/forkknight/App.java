@@ -1,24 +1,29 @@
 package forkknight;
 
-import forkknight.git.Commit;
-import forkknight.git.CommitFilters;
-import forkknight.git.FileChange;
-import forkknight.git.GitService;
-import forkknight.git.WorkDirChange;
+import forkknight.core.Banner;
+import forkknight.core.Chronicle;
+import forkknight.core.Dispatch;
+import forkknight.core.Feat;
+import forkknight.core.Scryer;
+import forkknight.core.Sigil;
+import forkknight.core.Weave;
+import forkknight.ui.TalePane;
 import javafx.application.Application;
-import javafx.beans.binding.Bindings;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.collections.transformation.FilteredList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
-import javafx.geometry.Orientation;
+import javafx.geometry.Pos;
 import javafx.scene.Scene;
+import javafx.scene.canvas.Canvas;
+import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
+import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
+import javafx.scene.paint.Color;
 import javafx.stage.DirectoryChooser;
 import javafx.stage.Stage;
 
@@ -26,28 +31,46 @@ import java.io.File;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.List;
+import java.util.Optional;
+import java.util.function.Predicate;
 
 /**
- * ForkKnight - a lightweight Git repository visualizer.
- * Displays the commit log of a selected local Git repository and, when a
- * commit is selected, the list of changed files with their diffs.
+ * ForkKnight - a lightweight scroll of the realm (a desktop Git client).
+ * The chronicle is displayed as a woven trail of feats; the knight can
+ * enlist, seal, raise banners, press sigils and vanish changes into
+ * Kamui - all without speaking the dragon's tongue.
  */
 public class App extends Application {
 
-    private GitService git;
-    private TableView<Commit> commitTable;
-    private TextField repoPathField;
-    private final ObservableList<Commit> commitData = FXCollections.observableArrayList();
-    private FilteredList<Commit> filteredCommits;
-    private Label statusBar;
-    private ComboBox<String> branchBox;
-    private TextField searchField;
-    private ComboBox<String> searchScopeBox;
-    private ComboBox<String> tagBox;
-    private Button newTagBtn;
-    private Button deleteTagBtn;
+    private static final String DARK_THEME_URL =
+            App.class.getResource("/forkknight/dark-theme.css").toExternalForm();
 
-    private DetailsView detailsView;
+    private static final double LANE_WIDTH = 18;
+    private static final double NODE_RADIUS = 5;
+    private static final Color[] LANE_COLORS = {
+            Color.web("#7aa2f7"), Color.web("#bb9af7"), Color.web("#9ece6a"),
+            Color.web("#e0af68"), Color.web("#f7768e"), Color.web("#7dcfff"),
+            Color.web("#ff9e64"), Color.web("#73daca")
+    };
+
+    private Chronicle chronicle;
+    private TableView<Weave.Woven> chronicleTable;
+    private TextField realmPathField;
+    private final ObservableList<Weave.Woven> chronicleData =
+            FXCollections.observableArrayList();
+    private Label statusBar;
+    private ComboBox<String> bannerBox;
+    private TextField scryField;
+    private ComboBox<Scryer.Scope> scryScopeBox;
+    private ComboBox<String> sigilBox;
+    private Button summonKamuiBtn;
+    private Scene mainScene;
+    private boolean darkTheme = true;
+
+    private TalePane talePane;
+
+    private TableView<Dispatch> fieldTable;
+    private final ObservableList<Dispatch> fieldData = FXCollections.observableArrayList();
 
     public static void main(String[] args) {
         launch(args);
@@ -55,652 +78,772 @@ public class App extends Application {
 
     @Override
     public void start(Stage primaryStage) {
-        primaryStage.setTitle("ForkKnight - Git Log Viewer");
+        primaryStage.setTitle("ForkKnight - Scroll of the Realm");
 
-        Label repoLabel = new Label("Repository:");
-        repoPathField = new TextField();
-        repoPathField.setPromptText("Select a Git repository");
-        repoPathField.setEditable(false);
-        Button chooseRepoBtn = new Button("Choose...");
-        chooseRepoBtn.setOnAction(e -> chooseRepository());
+        // ----- realm chooser row -----
+        Label realmLabel = new Label("Realm:");
+        realmPathField = new TextField();
+        realmPathField.setPromptText("Choose a realm to serve");
+        realmPathField.setEditable(false);
+        Button chooseRealmBtn = new Button("Seek...");
+        chooseRealmBtn.setOnAction(e -> seekRealm());
+        HBox realmBox = new HBox(10, realmLabel, realmPathField, chooseRealmBtn);
+        realmBox.setPadding(new Insets(10));
+        HBox.setHgrow(realmPathField, javafx.scene.layout.Priority.ALWAYS);
 
-        HBox repoBox = new HBox(10, repoLabel, repoPathField, chooseRepoBtn);
-        repoBox.setPadding(new Insets(10));
-
-        Label branchLabel = new Label("Branch:");
-        branchBox = new ComboBox<>();
-        branchBox.setPromptText("Current branch");
-        branchBox.setDisable(true);
-        branchBox.setPrefWidth(160);
-        branchBox.setOnAction(e -> {
-            String branch = branchBox.getSelectionModel().getSelectedItem();
-            if (branch != null && git != null) {
-                loadCommits(branch);
+        // ----- banner + sigil row -----
+        Label bannerLabel = new Label("Banner:");
+        bannerBox = new ComboBox<>();
+        bannerBox.setPromptText("Raised banner");
+        bannerBox.setDisable(true);
+        bannerBox.setPrefWidth(150);
+        bannerBox.setOnAction(e -> {
+            String banner = bannerBox.getSelectionModel().getSelectedItem();
+            if (banner != null && chronicle != null) {
+                surveyTrail(banner);
             }
         });
 
-        Button newBranchBtn = new Button("New...");
-        newBranchBtn.setDisable(true);
-        newBranchBtn.setOnAction(e -> createBranchDialog());
-        Button switchBtn = new Button("Switch");
-        switchBtn.setDisable(true);
-        switchBtn.setOnAction(e -> switchToSelectedBranch());
-        Button deleteBtn = new Button("Delete...");
-        deleteBtn.setDisable(true);
-        deleteBtn.setOnAction(e -> deleteSelectedBranch());
-        branchBox.disableProperty().addListener((obs, was, is) -> {
-            boolean disabled = is;
-            newBranchBtn.setDisable(disabled);
-            switchBtn.setDisable(disabled);
-            deleteBtn.setDisable(disabled);
-            tagBox.setDisable(disabled);
-            newTagBtn.setDisable(disabled);
-            deleteTagBtn.setDisable(disabled);
+        Button raiseBannerBtn = new Button("Raise...");
+        raiseBannerBtn.setDisable(true);
+        raiseBannerBtn.setOnAction(e -> raiseBannerDialog());
+        Button marchBtn = new Button("March");
+        marchBtn.setDisable(true);
+        marchBtn.setOnAction(e -> marchToSelectedBanner());
+        Button fellBtn = new Button("Fell...");
+        fellBtn.setDisable(true);
+        fellBtn.setOnAction(e -> fellSelectedBanner());
+        bannerBox.disableProperty().addListener((obs, was, is) -> {
+            boolean off = is;
+            raiseBannerBtn.setDisable(off);
+            marchBtn.setDisable(off);
+            fellBtn.setDisable(off);
+            sigilBox.setDisable(off);
+            pressSigilBtn.setDisable(off);
+            meltSigilBtn.setDisable(off);
         });
 
-        Label tagLabel = new Label("Tag:");
-        tagBox = new ComboBox<>();
-        tagBox.setPromptText("No tags");
-        tagBox.setDisable(true);
-        tagBox.setPrefWidth(120);
-        tagBox.setOnAction(e -> {
-            String tag = tagBox.getSelectionModel().getSelectedItem();
-            if (tag != null && git != null) {
-                showTagInHistory(tag);
+        Label sigilLabel = new Label("Sigil:");
+        sigilBox = new ComboBox<>();
+        sigilBox.setPromptText("No sigils");
+        sigilBox.setDisable(true);
+        sigilBox.setPrefWidth(110);
+        sigilBox.setOnAction(e -> {
+            String sigil = sigilBox.getSelectionModel().getSelectedItem();
+            if (sigil != null && chronicle != null) {
+                revealSigil(sigil);
             }
         });
-        Button newTagBtnLocal = new Button("New...");
-        newTagBtn = newTagBtnLocal;
-        newTagBtn.setDisable(true);
-        newTagBtn.setOnAction(e -> createTagDialog());
-        Button deleteTagBtnLocal = new Button("Delete");
-        deleteTagBtn = deleteTagBtnLocal;
-        deleteTagBtn.setDisable(true);
-        deleteTagBtn.setOnAction(e -> deleteSelectedTag());
+        pressSigilBtn = new Button("Press...");
+        pressSigilBtn.setDisable(true);
+        pressSigilBtn.setOnAction(e -> pressSigilDialog());
+        meltSigilBtn = new Button("Melt");
+        meltSigilBtn.setDisable(true);
+        meltSigilBtn.setOnAction(e -> meltSelectedSigil());
 
-        HBox branchBoxUi = new HBox(10, branchLabel, branchBox, newBranchBtn, switchBtn, deleteBtn,
-                new Separator(javafx.geometry.Orientation.VERTICAL), tagLabel, tagBox, newTagBtn, deleteTagBtn);
-        branchBoxUi.setPadding(new Insets(0, 10, 10, 10));
-        branchBoxUi.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        HBox bannerRow = new HBox(10, bannerLabel, bannerBox, raiseBannerBtn, marchBtn, fellBtn,
+                new Separator(),
+                sigilLabel, sigilBox, pressSigilBtn, meltSigilBtn);
+        bannerRow.setPadding(new Insets(0, 10, 10, 10));
+        bannerRow.setAlignment(Pos.CENTER_LEFT);
 
-        commitTable = new TableView<>();
-        commitTable.setPlaceholder(new Label("No commits to display"));
-        commitTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
+        // ----- chronicle table with weave column -----
+        chronicleTable = new TableView<>();
+        chronicleTable.setPlaceholder(new Label("The chronicle awaits a realm"));
+        chronicleTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
-        TableColumn<Commit, String> hashCol = new TableColumn<>("Hash");
-        hashCol.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().shortHash()));
-        hashCol.setMinWidth(80);
+        TableColumn<Weave.Woven, Weave.Woven> weaveCol = new TableColumn<>("Weave");
+        weaveCol.setMinWidth(80);
+        weaveCol.setSortable(false);
+        weaveCol.setCellFactory(col -> new WeaveCell());
 
-        TableColumn<Commit, String> authorCol = new TableColumn<>("Author");
-        authorCol.setCellValueFactory(cell -> cell.getValue().author() == null ? null
-                : new SimpleStringProperty(cell.getValue().author()));
-        authorCol.setMinWidth(150);
+        TableColumn<Weave.Woven, String> markCol = new TableColumn<>("Mark");
+        markCol.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().feat().shortHash()));
+        markCol.setMinWidth(80);
+        markCol.setSortable(false);
 
-        TableColumn<Commit, LocalDate> dateCol = new TableColumn<>("Date");
-        dateCol.setCellValueFactory(cell ->
-                new javafx.beans.property.SimpleObjectProperty<>(cell.getValue().date()));
-        dateCol.setMinWidth(100);
-        dateCol.setCellFactory(col -> new TableCell<>() {
+        TableColumn<Weave.Woven, String> heroCol = new TableColumn<>("Hero");
+        heroCol.setCellValueFactory(cell -> cell.getValue().feat().author() == null ? null
+                : new SimpleStringProperty(cell.getValue().feat().author()));
+        heroCol.setMinWidth(150);
+        heroCol.setSortable(false);
+
+        TableColumn<Weave.Woven, LocalDate> dayCol = new TableColumn<>("Day");
+        dayCol.setCellValueFactory(cell ->
+                new javafx.beans.property.SimpleObjectProperty<>(cell.getValue().feat().date()));
+        dayCol.setMinWidth(100);
+        dayCol.setSortable(false);
+        dayCol.setCellFactory(col -> new TableCell<>() {
             @Override
             protected void updateItem(LocalDate item, boolean empty) {
                 super.updateItem(item, empty);
-                setText(empty || item == null ? null : item.format(DateTimeFormatter.ISO_LOCAL_DATE));
+                setText(empty || item == null ? null
+                        : item.format(DateTimeFormatter.ISO_LOCAL_DATE));
             }
         });
 
-        TableColumn<Commit, String> msgCol = new TableColumn<>("Message");
-        msgCol.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().summary()));
-        msgCol.setMinWidth(300);
+        TableColumn<Weave.Woven, String> taleCol = new TableColumn<>("Feat");
+        taleCol.setCellValueFactory(cell -> new SimpleStringProperty(
+                cell.getValue().feat().isFusion()
+                        ? cell.getValue().feat().summary() + "  \u2694 fusion"
+                        : cell.getValue().feat().summary()));
+        taleCol.setMinWidth(300);
+        taleCol.setSortable(false);
 
-        commitTable.getColumns().addAll(hashCol, authorCol, dateCol, msgCol);
-        filteredCommits = new FilteredList<>(commitData, p -> true);
-        commitTable.setItems(filteredCommits);
-        commitTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
-        commitTable.getSelectionModel().selectedItemProperty().addListener(
-                (obs, old, commit) -> onCommitSelected(commit));
+        chronicleTable.getColumns().addAll(weaveCol, markCol, heroCol, dayCol, taleCol);
+        chronicleTable.setItems(chronicleData);
+        chronicleTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        chronicleTable.getSelectionModel().selectedItemProperty().addListener(
+                (obs, old, woven) -> onFeatChosen(woven));
 
-        Label searchLabel = new Label("Search:");
-        searchField = new TextField();
-        searchField.setPromptText("Filter commits...");
-        HBox.setHgrow(searchField, javafx.scene.layout.Priority.ALWAYS);
-        searchScopeBox = new ComboBox<>();
-        searchScopeBox.getItems().addAll("Message", "Author", "Hash");
-        searchScopeBox.getSelectionModel().selectFirst();
-        Runnable applyFilter = this::applyCommitFilter;
-        searchField.textProperty().addListener((obs, oldText, newText) -> applyFilter.run());
-        searchScopeBox.valueProperty().addListener((obs, oldV, newV) -> applyFilter.run());
-        Button clearBtn = new Button("Clear");
-        clearBtn.setOnAction(e -> {
-            searchField.clear();
-            searchField.requestFocus();
+        // ----- scrying row -----
+        Label scryLabel = new Label("Scry:");
+        scryField = new TextField();
+        scryField.setPromptText("Peer into the chronicle... (words AND-match, prefixes bloom)");
+        HBox.setHgrow(scryField, javafx.scene.layout.Priority.ALWAYS);
+        scryScopeBox = new ComboBox<>();
+        scryScopeBox.getItems().addAll(Scryer.Scope.values());
+        scryScopeBox.getSelectionModel().selectFirst();
+        scryField.textProperty().addListener((obs, o, n) -> applyScrying());
+        scryScopeBox.valueProperty().addListener((obs, o, n) -> applyScrying());
+        Button clearScryBtn = new Button("Still");
+        clearScryBtn.setOnAction(e -> {
+            scryField.clear();
+            scryField.requestFocus();
         });
-        HBox searchBox = new HBox(8, searchLabel, searchField, searchScopeBox, clearBtn);
-        searchBox.setPadding(new Insets(5, 10, 5, 10));
+        HBox scryRow = new HBox(8, scryLabel, scryField, scryScopeBox, clearScryBtn);
+        scryRow.setPadding(new Insets(5, 10, 5, 10));
 
-        detailsView = new DetailsView();
+        talePane = new TalePane();
 
         statusBar = new Label("Ready");
         statusBar.setPadding(new Insets(4, 10, 4, 10));
+        statusBar.getStyleClass().add("status-bar");
 
-        VBox top = new VBox(5, repoBox, branchBoxUi, new Separator());
+        VBox top = new VBox(5, realmBox, bannerRow, new Separator());
         top.setPadding(new Insets(10, 10, 0, 10));
 
         SplitPane center = new SplitPane();
-        center.setOrientation(Orientation.VERTICAL);
-        center.getItems().addAll(commitTable, detailsView.getNode());
+        center.setOrientation(javafx.geometry.Orientation.VERTICAL);
+        center.getItems().addAll(chronicleTable, talePane.getNode());
         center.setDividerPosition(0, 0.55);
-        SplitPane.setResizableWithParent(detailsView.getNode(), true);
 
-        BorderPane historyTab = new BorderPane();
-        historyTab.setTop(searchBox);
-        historyTab.setCenter(center);
+        BorderPane chronicleTab = new BorderPane();
+        chronicleTab.setTop(scryRow);
+        chronicleTab.setCenter(center);
 
         TabPane tabs = new TabPane();
-        Tab historyTabItem = new Tab("History");
-        historyTabItem.setClosable(false);
-        historyTabItem.setContent(historyTab);
-        Tab workTab = new Tab("Working changes");
-        workTab.setClosable(false);
-        workTab.setContent(buildWorkingChangesView());
-        tabs.getTabs().addAll(historyTabItem, workTab);
-        tabs.getSelectionModel().selectedItemProperty().addListener(
-                (obs, oldTab, newTab) -> {
-                    if (newTab == workTab) {
-                        loadWorkingChanges();
-                    }
-                });
+        Tab scrollTab = new Tab("Scroll");
+        scrollTab.setClosable(false);
+        scrollTab.setContent(chronicleTab);
+        Tab fieldTab = new Tab("The Field");
+        fieldTab.setClosable(false);
+        fieldTab.setContent(buildFieldView());
+        tabs.getTabs().addAll(scrollTab, fieldTab);
+        tabs.getSelectionModel().selectedItemProperty().addListener((obs, o, newTab) -> {
+            if (newTab == fieldTab) {
+                musterTheField();
+            }
+        });
 
         BorderPane root = new BorderPane();
-        root.setTop(top);
+        root.setTop(new VBox(buildMenuBar(), top));
         root.setCenter(tabs);
         root.setBottom(statusBar);
 
-        Scene scene = new Scene(root, 1000, 700);
-        primaryStage.setScene(scene);
+        mainScene = new Scene(root, 1100, 750);
+        primaryStage.setScene(mainScene);
+        applyTheme();
         primaryStage.show();
     }
 
-    private void chooseRepository() {
-        DirectoryChooser chooser = new DirectoryChooser();
-        chooser.setTitle("Select Git Repository");
-        File selectedDir = chooser.showDialog(null);
-        if (selectedDir != null) {
-            openRepository(selectedDir);
+    private Button pressSigilBtn;
+    private Button meltSigilBtn;
+
+    // ------------------------------------------------------------------
+    // Weave cell: draws the lane lines and fusion curves on a canvas
+    // ------------------------------------------------------------------
+
+    private final class WeaveCell extends TableCell<Weave.Woven, Weave.Woven> {
+        private final Canvas canvas;
+        private final StackPane pane;
+
+        private WeaveCell() {
+            pane = new StackPane();
+            canvas = new Canvas();
+            pane.getChildren().add(canvas);
+            // Bind canvas size to the cell so repaints track layout.
+            canvas.widthProperty().bind(pane.widthProperty());
+            canvas.heightProperty().bind(pane.heightProperty());
+            canvas.widthProperty().addListener((obs, w, nw) -> repaint());
+            canvas.heightProperty().addListener((obs, h, nh) -> repaint());
+            setGraphic(pane);
+        }
+
+        @Override
+        protected void updateItem(Weave.Woven item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty) {
+                setGraphic(null);
+                return;
+            }
+            setGraphic(pane);
+            repaint();
+        }
+
+        private void repaint() {
+            Weave.Woven woven = getItem();
+            if (woven == null || canvas.getWidth() <= 0 || canvas.getHeight() <= 0) {
+                return;
+            }
+            GraphicsContext g = canvas.getGraphicsContext2D();
+            double w = canvas.getWidth();
+            double h = canvas.getHeight();
+            g.clearRect(0, 0, w, h);
+
+            double y = h / 2;
+
+            // Link down to each on-screen parent lane.
+            for (int parentLane : woven.parentLanes()) {
+                Color color = laneColor(parentLane);
+                g.setStroke(color);
+                g.setLineWidth(2);
+                if (parentLane == woven.lane()) {
+                    g.strokeLine(laneX(woven.lane()), y, laneX(parentLane), h + 6);
+                } else {
+                    // Fusion bend: down this lane, then diagonal into the parent's.
+                    g.strokeLine(laneX(woven.lane()), y, laneX(woven.lane()), h * 0.75);
+                    g.strokeLine(laneX(woven.lane()), h * 0.75,
+                            laneX(parentLane), h + 6);
+                }
+            }
+            // This feat's node.
+            g.setFill(laneColor(woven.lane()));
+            g.fillOval(laneX(woven.lane()) - NODE_RADIUS, y - NODE_RADIUS,
+                    NODE_RADIUS * 2, NODE_RADIUS * 2);
+            if (woven.feat().isFusion()) {
+                g.setStroke(Color.web("#f7768e"));
+                g.setLineWidth(1.5);
+                g.strokeOval(laneX(woven.lane()) - NODE_RADIUS - 2.5,
+                        y - NODE_RADIUS - 2.5, NODE_RADIUS * 2 + 5, NODE_RADIUS * 2 + 5);
+            }
+        }
+
+        private double laneX(int lane) {
+            return 12 + lane * LANE_WIDTH;
+        }
+
+        private Color laneColor(int lane) {
+            return LANE_COLORS[Math.floorMod(lane, LANE_COLORS.length)];
         }
     }
 
-    private void openRepository(File dir) {
-        GitService candidate = new GitService(dir);
+    // ------------------------------------------------------------------
+    // Menu + theme
+    // ------------------------------------------------------------------
+
+    private MenuBar buildMenuBar() {
+        Menu realmMenu = new Menu("Realm");
+        MenuItem seekItem = new MenuItem("Seek Realm...");
+        seekItem.setOnAction(e -> seekRealm());
+        MenuItem quitItem = new MenuItem("Depart");
+        quitItem.setOnAction(e -> javafx.application.Platform.exit());
+        realmMenu.getItems().addAll(seekItem, new SeparatorMenuItem(), quitItem);
+
+        Menu viewMenu = new Menu("Sight");
+        ToggleGroup themeGroup = new ToggleGroup();
+        RadioMenuItem darkItem = new RadioMenuItem("Night Sight");
+        RadioMenuItem lightItem = new RadioMenuItem("Day Sight");
+        darkItem.setToggleGroup(themeGroup);
+        lightItem.setToggleGroup(themeGroup);
+        darkItem.setSelected(darkTheme);
+        darkItem.setOnAction(e -> setTheme(true));
+        lightItem.setOnAction(e -> setTheme(false));
+        viewMenu.getItems().addAll(darkItem, lightItem);
+
+        MenuBar menuBar = new MenuBar();
+        menuBar.getMenus().addAll(realmMenu, viewMenu);
+        return menuBar;
+    }
+
+    private void setTheme(boolean dark) {
+        darkTheme = dark;
+        applyTheme();
+    }
+
+    private void applyTheme() {
+        if (darkTheme) {
+            if (!mainScene.getStylesheets().contains(DARK_THEME_URL)) {
+                mainScene.getStylesheets().add(DARK_THEME_URL);
+            }
+        } else {
+            mainScene.getStylesheets().remove(DARK_THEME_URL);
+        }
+    }
+
+    // ------------------------------------------------------------------
+    // Realm discovery
+    // ------------------------------------------------------------------
+
+    private void seekRealm() {
+        DirectoryChooser chooser = new DirectoryChooser();
+        chooser.setTitle("Choose Your Realm");
+        File selectedDir = chooser.showDialog(null);
+        if (selectedDir != null) {
+            openRealm(selectedDir);
+        }
+    }
+
+    private void openRealm(File dir) {
+        Chronicle candidate = new Chronicle(dir);
         Task<Void> task = new Task<>() {
             @Override
             protected Void call() throws Exception {
-                candidate.validateRepository();
+                candidate.validateRealm();
                 return null;
             }
         };
         task.setOnSucceeded(e -> {
-            git = candidate;
-            repoPathField.setText(dir.getAbsolutePath());
-            loadBranches();
-            loadTags();
-            loadCommits(null);
-            refreshStashButton();
+            chronicle = candidate;
+            realmPathField.setText(dir.getAbsolutePath());
+            loadBanners();
+            loadSigils();
+            surveyTrail(null);
+            refreshKamuiButton();
         });
-        task.setOnFailed(e -> showError("Not a git repository: "
+        task.setOnFailed(e -> showError("This land answers to no realm: "
                 + task.getException().getMessage()));
-        new Thread(task, "repo-validate").start();
+        new Thread(task, "realm-verify").start();
     }
 
-    private void loadBranches() {
-        GitService service = git;
-        Task<List<String>> task = new Task<>() {
+    private void loadBanners() {
+        Chronicle service = chronicle;
+        Task<List<Banner>> task = new Task<>() {
             @Override
-            protected List<String> call() throws Exception {
-                return service.branches();
+            protected List<Banner> call() throws Exception {
+                return service.banners();
             }
         };
         task.setOnSucceeded(e -> {
-            branchBox.getItems().setAll(task.getValue());
-            String current;
-            try {
-                current = service.currentBranch();
-            } catch (Exception ex) {
-                current = null;
+            bannerBox.getItems().setAll(task.getValue().stream()
+                    .map(Banner::name).toList());
+            String active = task.getValue().stream()
+                    .filter(Banner::active).findFirst()
+                    .map(Banner::name).orElse(null);
+            if (active != null) {
+                bannerBox.getSelectionModel().select(active);
+            } else if (!bannerBox.getItems().isEmpty()) {
+                bannerBox.getSelectionModel().selectFirst();
             }
-            if (current != null && !current.isBlank()) {
-                branchBox.getSelectionModel().select(current);
-            } else if (!branchBox.getItems().isEmpty()) {
-                branchBox.getSelectionModel().selectFirst();
-            }
-            branchBox.setDisable(branchBox.getItems().isEmpty());
+            bannerBox.setDisable(bannerBox.getItems().isEmpty());
         });
-        task.setOnFailed(e -> branchBox.setDisable(true));
-        Thread thread = new Thread(task, "branch-loader");
-        thread.setDaemon(true);
-        thread.start();
+        task.setOnFailed(e -> bannerBox.setDisable(true));
+        startDaemon(task, "banner-load");
     }
 
-    private void loadCommits(String branch) {
-        commitData.clear();
-        detailsView.reset();
-        commitTable.setPlaceholder(new Label("Loading commits..."));
-        statusBar.setText("Loading log...");
+    private void surveyTrail(String banner) {
+        chronicleData.clear();
+        talePane.reset();
+        chronicleTable.setPlaceholder(new Label("Unrolling the scroll..."));
+        statusBar.setText("Surveying the trail...");
 
-        GitService service = git;
-        Task<List<Commit>> task = new Task<>() {
+        Chronicle service = chronicle;
+        Task<Weave> task = new Task<>() {
             @Override
-            protected List<Commit> call() throws Exception {
-                return service.log(branch, Integer.MAX_VALUE);
+            protected Weave call() throws Exception {
+                List<Feat> feats = service.surveyTrail(banner, Integer.MAX_VALUE);
+                // Index the fresh trail for scrying; built on the worker
+                // thread so the UI never stalls on big realms.
+                scryer = new Scryer(feats);
+                return Weave.of(feats);
             }
         };
         task.setOnSucceeded(e -> {
-            commitData.addAll(task.getValue());
-            applyCommitFilter();
-            if (commitData.isEmpty()) {
-                commitTable.setPlaceholder(new Label("No commits found."));
+            chronicleData.setAll(task.getValue().rows());
+            applyScrying();
+            if (chronicleData.isEmpty()) {
+                chronicleTable.setPlaceholder(new Label("The chronicle is empty."));
             } else {
-                commitTable.setPlaceholder(null);
+                chronicleTable.setPlaceholder(null);
             }
         });
-        task.setOnFailed(e -> showError("Failed to load commits: "
+        task.setOnFailed(e -> showError("The survey failed: "
                 + task.getException().getMessage()));
-        Thread thread = new Thread(task, "log-loader");
-        thread.setDaemon(true);
-        thread.start();
+        startDaemon(task, "trail-survey");
     }
 
-    /** Applies the search filter to the commit list and updates the status bar. */
-    private void applyCommitFilter() {
-        String query = searchField.getText();
-        String scope = searchScopeBox.getValue();
+    // ------------------------------------------------------------------
+    // Scrying (search) via the Scryer index
+    // ------------------------------------------------------------------
+
+    private Scryer scryer;
+
+    private void applyScrying() {
+        String query = scryField.getText();
+        if (scryer == null) {
+            return;
+        }
+        Scryer.Scope scope = scryScopeBox.getValue();
         if (query == null || query.isBlank()) {
-            filteredCommits.setPredicate(null);
-            statusBar.setText(commitData.size() + " commits");
+            chronicleTable.setItems(chronicleData);
+            statusBar.setText(chronicleData.size() + " feats");
             return;
         }
-        filteredCommits.setPredicate(CommitFilters.byScope(scope, query));
-        statusBar.setText(filteredCommits.size() + " of " + commitData.size()
-                + " commits match \"" + query.strip() + "\"");
-        if (filteredCommits.isEmpty() && !commitData.isEmpty()) {
-            commitTable.setPlaceholder(new Label("No commits match the search."));
-        } else if (!commitData.isEmpty()) {
-            commitTable.setPlaceholder(null);
+        Predicate<Weave.Woven> predicate = woven ->
+                scryer.predicateFor(query, scope).test(woven.feat());
+        chronicleTable.setItems(chronicleData.filtered(predicate::test));
+        int shown = chronicleTable.getItems().size();
+        statusBar.setText(shown + " of " + chronicleData.size()
+                + " feats answer \"" + query.strip() + "\"");
+        if (shown == 0 && !chronicleData.isEmpty()) {
+            chronicleTable.setPlaceholder(new Label("The scry found nothing."));
         }
     }
 
-    private void onCommitSelected(Commit commit) {
-        if (commit == null) {
-            detailsView.reset();
+    // ------------------------------------------------------------------
+    // Feat selection -> tale pane
+    // ------------------------------------------------------------------
+
+    private void onFeatChosen(Weave.Woven woven) {
+        if (woven == null) {
+            talePane.reset();
             return;
         }
-        if (git == null) {
+        if (chronicle == null) {
             return;
         }
-        detailsView.showCommit(git, commit);
-        statusBar.setText("Loading commit " + commit.shortHash() + "...");
-        detailsView.setOnLoaded(() -> statusBar.setText(commitData.size() + " commits"));
+        talePane.recount(chronicle, woven.feat());
+        statusBar.setText("Recounting " + woven.feat().shortHash() + "...");
     }
 
     // ------------------------------------------------------------------
-    // Branch management
+    // Banners (branches)
     // ------------------------------------------------------------------
 
-    private static final java.util.regex.Pattern BRANCH_NAME =
-            java.util.regex.Pattern.compile("[^-][a-zA-Z0-9._/-]*");
-
-    private void createBranchDialog() {
-        if (git == null) {
+    private void raiseBannerDialog() {
+        if (chronicle == null) {
             return;
         }
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("ForkKnight - New Branch");
-        dialog.setHeaderText("Create a new branch at HEAD");
-        dialog.setContentText("Branch name:");
-        dialog.showAndWait().map(name -> name.strip()).ifPresent(name -> {
+        nameDialog("Raise Banner", "Raise a new banner at the frontier",
+                "Banner name:").ifPresent(name -> {
             if (name.isEmpty()) {
                 return;
             }
-            if (isBranchNameInvalid(name)) {
-                showError("Invalid branch name: " + name);
+            if (isBannerNameForbidden(name)) {
+                showError("A banner may not bear such a name: " + name);
                 return;
             }
-            runGitAction("Create branch '" + name + "'", () -> git.createBranch(name),
-                    () -> loadBranches());
+            runRealmAction("Raise '" + name + "'",
+                    () -> chronicle.raiseBanner(name), this::loadBanners);
         });
     }
 
-    private void switchToSelectedBranch() {
-        if (git == null) {
+    private void marchToSelectedBanner() {
+        if (chronicle == null) {
             return;
         }
-        String target = branchBox.getSelectionModel().getSelectedItem();
-        String current = branchBox.getItems().isEmpty() ? null : branchBox.getItems().get(0);
-        if (target == null || target.equals(current)) {
-            showError("Select a different branch to switch to.");
+        String target = bannerBox.getSelectionModel().getSelectedItem();
+        String active = activeBannerName();
+        if (target == null || target.equals(active)) {
+            showError("Choose a different banner to march to.");
             return;
         }
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Switch to branch '" + target + "'?", ButtonType.YES, ButtonType.NO);
-        confirm.setHeaderText("Switch branch");
-        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
-                runGitAction("Switch to '" + target + "'", () -> git.switchBranch(target),
+        confirmDialog("March", "March the host to '" + target + "'?", () ->
+                runRealmAction("March to '" + target + "'",
+                        () -> chronicle.marchToBanner(target),
                         () -> {
-                            loadBranches();
-                            loadCommits(target);
+                            loadBanners();
+                            surveyTrail(target);
                         }));
     }
 
-    private void deleteSelectedBranch() {
-        if (git == null) {
+    private void fellSelectedBanner() {
+        if (chronicle == null) {
             return;
         }
-        String target = branchBox.getSelectionModel().getSelectedItem();
-        String current = branchBox.getItems().isEmpty() ? null : branchBox.getItems().get(0);
+        String target = bannerBox.getSelectionModel().getSelectedItem();
         if (target == null) {
-            showError("Select a branch to delete.");
+            showError("Choose a banner to fell.");
             return;
         }
-        if (target.equals(current)) {
-            showError("Cannot delete the current branch.");
+        if (target.equals(activeBannerName())) {
+            showError("The raised banner cannot be felled.");
             return;
         }
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Delete branch '" + target + "'?\nUnmerged commits will be lost.",
-                ButtonType.YES, ButtonType.NO);
-        confirm.setHeaderText("Delete branch");
-        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
-                runGitAction("Delete '" + target + "'", () -> git.deleteBranch(target, false),
-                        () -> loadBranches()));
+        confirmDialog("Fell Banner",
+                "Fell the banner '" + target + "'?\nUnmerged feats will be lost.",
+                () -> runRealmAction("Fell '" + target + "'",
+                        () -> chronicle.fellBanner(target, false), this::loadBanners));
     }
 
-    private boolean isBranchNameInvalid(String name) {
-        return !BRANCH_NAME.matcher(name).matches() || name.endsWith(".lock")
-                || name.endsWith("/") || name.contains("..") || name.startsWith("-");
+    private String activeBannerName() {
+        return bannerBox.getSelectionModel().getSelectedItem();
+    }
+
+    private boolean isBannerNameForbidden(String name) {
+        return name.startsWith("-") || name.endsWith("/") || name.endsWith(".lock")
+                || name.contains("..") || name.contains(" ");
     }
 
     // ------------------------------------------------------------------
-    // Tags
+    // Sigils (tags)
     // ------------------------------------------------------------------
 
-    private void loadTags() {
-        if (git == null) {
+    private void loadSigils() {
+        if (chronicle == null) {
             return;
         }
-        GitService service = git;
-        Task<List<String>> task = new Task<>() {
+        Chronicle service = chronicle;
+        Task<List<Sigil>> task = new Task<>() {
             @Override
-            protected List<String> call() throws Exception {
-                return service.tags();
+            protected List<Sigil> call() throws Exception {
+                return service.sigils();
             }
         };
-        task.setOnSucceeded(e -> tagBox.getItems().setAll(task.getValue()));
-        task.setOnFailed(e -> tagBox.getItems().clear());
-        Thread thread = new Thread(task, "tag-loader");
-        thread.setDaemon(true);
-        thread.start();
+        task.setOnSucceeded(e -> sigilBox.getItems().setAll(task.getValue().stream()
+                .map(Sigil::name).toList()));
+        task.setOnFailed(e -> sigilBox.getItems().clear());
+        startDaemon(task, "sigil-load");
     }
 
-    /** Loads the tagged commit into the history view without switching branches. */
-    private void showTagInHistory(String tag) {
-        if (git == null) {
+    /** Jumps the chronicle view to the feat carrying the sigil. */
+    private void revealSigil(String name) {
+        if (chronicle == null) {
             return;
         }
-        GitService service = git;
-        Task<Commit> task = new Task<>() {
+        Chronicle service = chronicle;
+        Task<Feat> task = new Task<>() {
             @Override
-            protected Commit call() throws Exception {
-                return service.tagCommit(tag);
+            protected Feat call() throws Exception {
+                List<Sigil> sigils = service.sigils();
+                return sigils.stream().filter(s -> s.name().equals(name))
+                        .map(Sigil::feat).findFirst().orElse(null);
             }
         };
         task.setOnSucceeded(e -> {
-            Commit tagged = task.getValue();
-            if (tagged == null) {
+            Feat feat = task.getValue();
+            if (feat == null) {
                 return;
             }
-            // Select the tagged commit in the table if visible, else load its hash.
-            String hash = tagged.hash();
-            Commit match = commitData.stream()
-                    .filter(c -> c.hash().equals(hash))
-                    .findFirst().orElse(null);
-            if (match != null) {
-                commitTable.getSelectionModel().select(match);
-                commitTable.scrollTo(match);
-            } else {
-                statusBar.setText("Tag '" + tag + "' -> " + tagged.shortHash()
-                        + " (not in current branch history)");
-            }
+            chronicleData.stream()
+                    .filter(w -> w.feat().hash().equals(feat.hash()))
+                    .findFirst()
+                    .ifPresentOrElse(w -> {
+                        chronicleTable.getSelectionModel().select(w);
+                        chronicleTable.scrollTo(w);
+                    }, () -> statusBar.setText("Sigil '" + name + "' marks "
+                            + feat.shortHash() + ", off this trail"));
         });
-        task.setOnFailed(e -> showError("Could not resolve tag: "
+        task.setOnFailed(e -> showError("The sigil is unreadable: "
                 + task.getException().getMessage()));
-        Thread thread = new Thread(task, "tag-resolve");
-        thread.setDaemon(true);
-        thread.start();
+        startDaemon(task, "sigil-reveal");
     }
 
-    private void createTagDialog() {
-        if (git == null) {
+    private void pressSigilDialog() {
+        if (chronicle == null) {
             return;
         }
-        TextInputDialog dialog = new TextInputDialog();
-        dialog.setTitle("ForkKnight - New Tag");
-        dialog.setHeaderText("Create a tag at the selected commit (or HEAD)");
-        dialog.setContentText("Tag name:");
-        dialog.showAndWait().map(name -> name.strip()).ifPresent(name -> {
+        nameDialog("Press Sigil", "Press a sigil onto the chosen feat (or the frontier)",
+                "Sigil name:").ifPresent(name -> {
             if (name.isEmpty()) {
                 return;
             }
-            Commit selected = commitTable.getSelectionModel().getSelectedItem();
-            String hash = selected != null ? selected.hash() : null;
-            runGitAction("Create tag '" + name + "'", () -> git.createTag(name, hash),
-                    this::loadTags);
+            Weave.Woven chosen = chronicleTable.getSelectionModel().getSelectedItem();
+            String hash = chosen != null ? chosen.feat().hash() : null;
+            runRealmAction("Press '" + name + "'",
+                    () -> chronicle.pressSigil(name, hash), this::loadSigils);
         });
     }
 
-    private void deleteSelectedTag() {
-        if (git == null) {
+    private void meltSelectedSigil() {
+        if (chronicle == null) {
             return;
         }
-        String tag = tagBox.getSelectionModel().getSelectedItem();
-        if (tag == null) {
-            showError("Select a tag to delete.");
+        String name = sigilBox.getSelectionModel().getSelectedItem();
+        if (name == null) {
+            showError("Choose a sigil to melt.");
             return;
         }
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Delete tag '" + tag + "'?", ButtonType.YES, ButtonType.NO);
-        confirm.setHeaderText("Delete tag");
-        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
-                runGitAction("Delete tag '" + tag + "'", () -> git.deleteTag(tag),
-                        this::loadTags));
+        confirmDialog("Melt Sigil", "Melt the sigil '" + name + "'?",
+                () -> runRealmAction("Melt '" + name + "'",
+                        () -> chronicle.meltSigil(name), this::loadSigils));
     }
 
     // ------------------------------------------------------------------
-    // Stash
+    // Kamui (stash)
     // ------------------------------------------------------------------
 
-    private void stashChanges() {
-        if (git == null) {
+    private void vanishIntoKamui() {
+        if (chronicle == null) {
             return;
         }
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Stash all staged and unstaged changes?",
-                ButtonType.YES, ButtonType.NO);
-        confirm.setHeaderText("Stash changes");
-        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
-                runGitAction("Stash", () -> git.stash(), this::refreshStashButton));
+        confirmDialog("Kamui", "Vanish all field changes into Kamui's dimension?",
+                () -> runRealmAction("Kamui vanish",
+                        chronicle::kamuiVanish, this::refreshKamuiButton));
     }
 
-    private void popStash() {
-        if (git == null) {
+    private void summonFromKamui() {
+        if (chronicle == null) {
             return;
         }
-        runGitAction("Pop stash", () -> git.stashPop(), this::refreshStashButton);
+        runRealmAction("Kamui summon", chronicle::kamuiSummon, this::refreshKamuiButton);
     }
 
-    private void refreshStashButton() {
-        if (git == null) {
+    private void refreshKamuiButton() {
+        if (chronicle == null) {
             return;
         }
-        GitService service = git;
+        Chronicle service = chronicle;
         Task<Boolean> task = new Task<>() {
             @Override
             protected Boolean call() throws Exception {
-                return service.hasStash();
+                return service.kamuiHolds();
             }
         };
-        task.setOnSucceeded(e -> popStashBtn.setDisable(!task.getValue()));
-        Thread thread = new Thread(task, "stash-check");
-        thread.setDaemon(true);
-        thread.start();
+        task.setOnSucceeded(e -> summonKamuiBtn.setDisable(!task.getValue()));
+        startDaemon(task, "kamui-check");
     }
 
     // ------------------------------------------------------------------
-    // Working changes tab
+    // The Field tab (working changes)
     // ------------------------------------------------------------------
 
-    private TableView<WorkDirChange> workTable;
-    private final ObservableList<WorkDirChange> workData = FXCollections.observableArrayList();
-    private Button popStashBtn;
+    private javafx.scene.Node buildFieldView() {
+        fieldTable = new TableView<>();
+        fieldTable.setPlaceholder(new Label("The field is clear"));
 
-    private javafx.scene.Node buildWorkingChangesView() {
-        workTable = new TableView<>();
-        workTable.setPlaceholder(new Label("No changes"));
-
-        TableColumn<WorkDirChange, String> stateCol = new TableColumn<>("State");
+        TableColumn<Dispatch, String> stateCol = new TableColumn<>("Post");
         stateCol.setCellValueFactory(cell -> new SimpleStringProperty(
-                cell.getValue().staged() ? "Staged" : "Unstaged"));
-        stateCol.setMinWidth(80);
+                cell.getValue().staged() ? "Vanguard" : "Field"));
+        stateCol.setMinWidth(90);
 
-        TableColumn<WorkDirChange, String> statusCol = new TableColumn<>("Status");
+        TableColumn<Dispatch, String> statusCol = new TableColumn<>("Word");
         statusCol.setCellValueFactory(cell -> new SimpleStringProperty(
                 cell.getValue().description()));
-        statusCol.setMinWidth(80);
+        statusCol.setMinWidth(100);
 
-        TableColumn<WorkDirChange, String> pathCol = new TableColumn<>("Path");
+        TableColumn<Dispatch, String> pathCol = new TableColumn<>("Path");
         pathCol.setCellValueFactory(cell -> new SimpleStringProperty(
-                cell.getValue().isRename()
-                        ? cell.getValue().oldPath() + " -> " + cell.getValue().newPath()
-                        : cell.getValue().newPath()));
+                cell.getValue().isRenaming()
+                        ? cell.getValue().oldPath() + " \u2192 " + cell.getValue().path()
+                        : cell.getValue().path()));
         pathCol.setMinWidth(300);
 
-        workTable.getColumns().addAll(stateCol, statusCol, pathCol);
-        workTable.setItems(workData);
-        workTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
-        workTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
+        fieldTable.getColumns().addAll(stateCol, statusCol, pathCol);
+        fieldTable.setItems(fieldData);
+        fieldTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+        fieldTable.getSelectionModel().setSelectionMode(SelectionMode.MULTIPLE);
 
-        Button refreshBtn = new Button("Refresh");
-        refreshBtn.setOnAction(e -> loadWorkingChanges());
-        Button stageBtn = new Button("Stage");
-        stageBtn.setOnAction(e -> stageSelected(true));
-        Button unstageBtn = new Button("Unstage");
-        unstageBtn.setOnAction(e -> stageSelected(false));
-        Button stageAllBtn = new Button("Stage all");
-        stageAllBtn.setOnAction(e -> runGitAction("Stage all", () -> git.stageAll()));
-        Button commitBtn = new Button("Commit...");
-        commitBtn.setOnAction(e -> commitStaged());
-        Button discardBtn = new Button("Discard changes...");
-        discardBtn.setOnAction(e -> discardSelected());
-        Button stashBtn = new Button("Stash");
-        stashBtn.setOnAction(e -> stashChanges());
-        popStashBtn = new Button("Pop stash");
-        popStashBtn.setDisable(true);
-        popStashBtn.setOnAction(e -> popStash());
+        Button musterBtn = new Button("Muster");
+        musterBtn.setOnAction(e -> musterTheField());
+        Button enlistBtn = new Button("Enlist");
+        enlistBtn.setOnAction(e -> enlistSelected(true));
+        Button releaseBtn = new Button("Release");
+        releaseBtn.setOnAction(e -> enlistSelected(false));
+        Button enlistAllBtn = new Button("Enlist All");
+        enlistAllBtn.setOnAction(e ->
+                runRealmAction("Enlist all", chronicle::enlistAll));
+        Button sealBtn = new Button("Seal...");
+        sealBtn.setOnAction(e -> sealVanguard());
+        Button banishBtn = new Button("Banish...");
+        banishBtn.setOnAction(e -> banishSelected());
+        Button kamuiBtn = new Button("Kamui");
+        kamuiBtn.setOnAction(e -> vanishIntoKamui());
+        summonKamuiBtn = new Button("Summon");
+        summonKamuiBtn.setDisable(true);
+        summonKamuiBtn.setOnAction(e -> summonFromKamui());
 
-        HBox buttons = new HBox(8, refreshBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
-                stageBtn, unstageBtn, stageAllBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
-                commitBtn, discardBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
-                stashBtn, popStashBtn);
+        HBox buttons = new HBox(8, musterBtn, new Separator(),
+                enlistBtn, releaseBtn, enlistAllBtn, new Separator(),
+                sealBtn, banishBtn, new Separator(),
+                kamuiBtn, summonKamuiBtn);
         buttons.setPadding(new Insets(8));
 
         BorderPane pane = new BorderPane();
         pane.setTop(buttons);
-        pane.setCenter(workTable);
+        pane.setCenter(fieldTable);
         return pane;
     }
 
-    private void loadWorkingChanges() {
-        if (git == null) {
+    private void musterTheField() {
+        if (chronicle == null) {
             return;
         }
-        GitService service = git;
-        Task<List<WorkDirChange>> task = new Task<>() {
+        Chronicle service = chronicle;
+        Task<List<Dispatch>> task = new Task<>() {
             @Override
-            protected List<WorkDirChange> call() throws Exception {
-                return service.status();
+            protected List<Dispatch> call() throws Exception {
+                return service.muster();
             }
         };
-        task.setOnSucceeded(e -> workData.setAll(task.getValue()));
-        task.setOnFailed(e -> showError("Failed to load status: "
+        task.setOnSucceeded(e -> fieldData.setAll(task.getValue()));
+        task.setOnFailed(e -> showError("The muster failed: "
                 + task.getException().getMessage()));
-        Thread thread = new Thread(task, "status-loader");
-        thread.setDaemon(true);
-        thread.start();
+        startDaemon(task, "field-muster");
     }
 
-    private void stageSelected(boolean stage) {
-        List<WorkDirChange> selected = List.copyOf(workTable.getSelectionModel().getSelectedItems());
+    private void enlistSelected(boolean enlist) {
+        List<Dispatch> selected = List.copyOf(fieldTable.getSelectionModel().getSelectedItems());
         if (selected.isEmpty()) {
             return;
         }
-        runGitAction(stage ? "Stage" : "Unstage", () -> {
-            for (WorkDirChange change : selected) {
-                if (stage) {
-                    git.stage(change.newPath());
+        runRealmAction(enlist ? "Enlist" : "Release", () -> {
+            for (Dispatch dispatch : selected) {
+                if (enlist) {
+                    chronicle.enlist(dispatch.path());
                 } else {
-                    git.unstage(change.newPath());
+                    chronicle.release(dispatch.path());
                 }
             }
         });
     }
 
-    private void commitStaged() {
+    private void sealVanguard() {
         try {
-            git.requireStaged();
+            chronicle.requireVanguard();
         } catch (Exception ex) {
             showError(ex.getMessage());
             return;
         }
-        CommitDialog dialog = new CommitDialog(git, null);
-        dialog.message().ifPresent(message -> {
-            if (message.isBlank()) {
-                return;
-            }
-            runGitAction("Commit", () -> git.commit(message.trim()));
-        });
+        SealDialog dialog = new SealDialog();
+        Optional<SealWords> words = dialog.showAndWait();
+        words.ifPresent(w -> runRealmAction("Seal",
+                () -> chronicle.seal(w.summary(), w.body())));
     }
 
-    private void discardSelected() {
-        List<WorkDirChange> selected = List.copyOf(workTable.getSelectionModel().getSelectedItems());
+    private void banishSelected() {
+        List<Dispatch> selected = List.copyOf(fieldTable.getSelectionModel().getSelectedItems());
         if (selected.isEmpty()) {
             return;
         }
-        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
-                "Discard changes in " + selected.size() + " selected file(s)?\n"
-                        + "This cannot be undone.",
-                ButtonType.YES, ButtonType.NO);
-        confirm.setHeaderText("Discard changes");
-        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
-                runGitAction("Discard", () -> {
-                    for (WorkDirChange change : selected) {
-                        if (change.staged()) {
-                            git.unstage(change.newPath());
+        confirmDialog("Banish",
+                "Banish changes in " + selected.size() + " path(s)?\nThis cannot be undone.",
+                () -> runRealmAction("Banish", () -> {
+                    for (Dispatch dispatch : selected) {
+                        if (dispatch.staged()) {
+                            chronicle.release(dispatch.path());
                         }
-                        if (!change.statusCode().equals("?") && !change.statusCode().equals("D")) {
-                            git.discard(change.newPath());
-                        } else if (change.statusCode().equals("?")) {
-                            git.deleteUntracked(change.newPath());
+                        if (!dispatch.statusCode().equals("?")
+                                && !dispatch.statusCode().equals("D")) {
+                            chronicle.restore(dispatch.path());
+                        } else if (dispatch.statusCode().equals("?")) {
+                            chronicle.vanquishUnscouted(dispatch.path());
                         }
                     }
                 }));
     }
 
-    /** Runs a mutating git action on a background thread, then refreshes. */
-    private void runGitAction(String name, GitAction action) {
-        runGitAction(name, action, null);
+    // ------------------------------------------------------------------
+    // Shared plumbing
+    // ------------------------------------------------------------------
+
+    /** Runs a mutating chronicle action on a background thread, then refreshes. */
+    private void runRealmAction(String name, RealmAction action) {
+        runRealmAction(name, action, null);
     }
 
-    /** Variant with an extra FX-thread callback after success. */
-    private void runGitAction(String name, GitAction action, Runnable onDone) {
-        if (git == null) {
+    private void runRealmAction(String name, RealmAction action, Runnable onDone) {
+        if (chronicle == null) {
             return;
         }
         statusBar.setText(name + "...");
@@ -712,22 +855,21 @@ public class App extends Application {
             }
         };
         task.setOnSucceeded(e -> {
-            statusBar.setText(name + " done");
-            loadWorkingChanges();
-            loadCommits(branchBox.getSelectionModel().getSelectedItem());
+            statusBar.setText(name + " - done");
+            musterTheField();
+            surveyTrail(bannerBox.getSelectionModel().getSelectedItem());
+            refreshKamuiButton();
             if (onDone != null) {
                 onDone.run();
             }
         });
-        task.setOnFailed(e -> showError(name + " failed: "
+        task.setOnFailed(e -> showError(name + " faltered: "
                 + task.getException().getMessage()));
-        Thread thread = new Thread(task, "git-action");
-        thread.setDaemon(true);
-        thread.start();
+        startDaemon(task, "realm-action");
     }
 
     @FunctionalInterface
-    private interface GitAction {
+    private interface RealmAction {
         void run() throws Exception;
     }
 
@@ -736,5 +878,26 @@ public class App extends Application {
         Alert alert = new Alert(Alert.AlertType.ERROR, message, ButtonType.OK);
         alert.setHeaderText("ForkKnight");
         alert.show();
+    }
+
+    private Optional<String> nameDialog(String title, String header, String label) {
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("ForkKnight - " + title);
+        dialog.setHeaderText(header);
+        dialog.setContentText(label);
+        return dialog.showAndWait().map(String::strip);
+    }
+
+    private void confirmDialog(String title, String message, Runnable onYes) {
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION, message,
+                ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText(title);
+        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b -> onYes.run());
+    }
+
+    private static void startDaemon(Task<?> task, String name) {
+        Thread thread = new Thread(task, name);
+        thread.setDaemon(true);
+        thread.start();
     }
 }

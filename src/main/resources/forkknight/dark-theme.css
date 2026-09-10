@@ -1,0 +1,66 @@
+/*
+ * ForkKnight dark theme, layered on top of JavaFX's built-in Modena
+ * dark look (Application.STYLESHEET_MODENA with dark base = #2b2b2b).
+ * This file only fine-tunes the pieces Modena does not cover.
+ */
+
+.root {
+    -fx-base: #2b2b2b;
+    -fx-background: #1e1e1e;
+    -fx-control-inner-background: #2b2b2b;
+    -fx-accent: #7aa2f7;
+    -fx-focus-color: #7aa2f7;
+    -fx-faint-focus-color: transparent;
+    -fx-default-button-color: #7aa2f7;
+}
+
+.label {
+    -fx-text-fill: #d4d4d4;
+}
+
+.status-bar {
+    -fx-text-fill: #9a9a9a;
+    -fx-background-color: #1a1a1a;
+}
+
+.table-view {
+    -fx-border-color: #383838;
+    -fx-background-insets: 0;
+    -fx-background-radius: 0;
+}
+
+.table-view .column-header .label {
+    -fx-text-fill: #b0b0b0;
+    -fx-font-weight: bold;
+}
+
+.table-row-cell:selected {
+    -fx-background-color: #31597e;
+}
+
+.table-row-cell:selected .text {
+    -fx-fill: #ffffff;
+}
+
+.list-cell:selected {
+    -fx-background-color: #31597e;
+}
+
+.diff-area {
+    -fx-control-inner-background: #161616;
+    -fx-text-fill: #c8c8c8;
+}
+
+.diff-area .content {
+    -fx-background-color: #161616;
+}
+
+.commit-header {
+    -fx-text-fill: #7aa2f7;
+    -fx-font-weight: bold;
+}
+
+.toolbar-box {
+    -fx-background-color: #232323;
+    -fx-border-color: transparent transparent #383838 transparent;
+}
