@@ -43,6 +43,9 @@ public class App extends Application {
     private ComboBox<String> branchBox;
     private TextField searchField;
     private ComboBox<String> searchScopeBox;
+    private ComboBox<String> tagBox;
+    private Button newTagBtn;
+    private Button deleteTagBtn;
 
     private DetailsView detailsView;
 
@@ -90,9 +93,33 @@ public class App extends Application {
             newBranchBtn.setDisable(disabled);
             switchBtn.setDisable(disabled);
             deleteBtn.setDisable(disabled);
+            tagBox.setDisable(disabled);
+            newTagBtn.setDisable(disabled);
+            deleteTagBtn.setDisable(disabled);
         });
 
-        HBox branchBoxUi = new HBox(10, branchLabel, branchBox, newBranchBtn, switchBtn, deleteBtn);
+        Label tagLabel = new Label("Tag:");
+        tagBox = new ComboBox<>();
+        tagBox.setPromptText("No tags");
+        tagBox.setDisable(true);
+        tagBox.setPrefWidth(120);
+        tagBox.setOnAction(e -> {
+            String tag = tagBox.getSelectionModel().getSelectedItem();
+            if (tag != null && git != null) {
+                showTagInHistory(tag);
+            }
+        });
+        Button newTagBtnLocal = new Button("New...");
+        newTagBtn = newTagBtnLocal;
+        newTagBtn.setDisable(true);
+        newTagBtn.setOnAction(e -> createTagDialog());
+        Button deleteTagBtnLocal = new Button("Delete");
+        deleteTagBtn = deleteTagBtnLocal;
+        deleteTagBtn.setDisable(true);
+        deleteTagBtn.setOnAction(e -> deleteSelectedTag());
+
+        HBox branchBoxUi = new HBox(10, branchLabel, branchBox, newBranchBtn, switchBtn, deleteBtn,
+                new Separator(javafx.geometry.Orientation.VERTICAL), tagLabel, tagBox, newTagBtn, deleteTagBtn);
         branchBoxUi.setPadding(new Insets(0, 10, 10, 10));
         branchBoxUi.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
 
@@ -215,7 +242,9 @@ public class App extends Application {
             git = candidate;
             repoPathField.setText(dir.getAbsolutePath());
             loadBranches();
+            loadTags();
             loadCommits(null);
+            refreshStashButton();
         });
         task.setOnFailed(e -> showError("Not a git repository: "
                 + task.getException().getMessage()));
@@ -390,11 +419,147 @@ public class App extends Application {
     }
 
     // ------------------------------------------------------------------
+    // Tags
+    // ------------------------------------------------------------------
+
+    private void loadTags() {
+        if (git == null) {
+            return;
+        }
+        GitService service = git;
+        Task<List<String>> task = new Task<>() {
+            @Override
+            protected List<String> call() throws Exception {
+                return service.tags();
+            }
+        };
+        task.setOnSucceeded(e -> tagBox.getItems().setAll(task.getValue()));
+        task.setOnFailed(e -> tagBox.getItems().clear());
+        Thread thread = new Thread(task, "tag-loader");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    /** Loads the tagged commit into the history view without switching branches. */
+    private void showTagInHistory(String tag) {
+        if (git == null) {
+            return;
+        }
+        GitService service = git;
+        Task<Commit> task = new Task<>() {
+            @Override
+            protected Commit call() throws Exception {
+                return service.tagCommit(tag);
+            }
+        };
+        task.setOnSucceeded(e -> {
+            Commit tagged = task.getValue();
+            if (tagged == null) {
+                return;
+            }
+            // Select the tagged commit in the table if visible, else load its hash.
+            String hash = tagged.hash();
+            Commit match = commitData.stream()
+                    .filter(c -> c.hash().equals(hash))
+                    .findFirst().orElse(null);
+            if (match != null) {
+                commitTable.getSelectionModel().select(match);
+                commitTable.scrollTo(match);
+            } else {
+                statusBar.setText("Tag '" + tag + "' -> " + tagged.shortHash()
+                        + " (not in current branch history)");
+            }
+        });
+        task.setOnFailed(e -> showError("Could not resolve tag: "
+                + task.getException().getMessage()));
+        Thread thread = new Thread(task, "tag-resolve");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    private void createTagDialog() {
+        if (git == null) {
+            return;
+        }
+        TextInputDialog dialog = new TextInputDialog();
+        dialog.setTitle("ForkKnight - New Tag");
+        dialog.setHeaderText("Create a tag at the selected commit (or HEAD)");
+        dialog.setContentText("Tag name:");
+        dialog.showAndWait().map(name -> name.strip()).ifPresent(name -> {
+            if (name.isEmpty()) {
+                return;
+            }
+            Commit selected = commitTable.getSelectionModel().getSelectedItem();
+            String hash = selected != null ? selected.hash() : null;
+            runGitAction("Create tag '" + name + "'", () -> git.createTag(name, hash),
+                    this::loadTags);
+        });
+    }
+
+    private void deleteSelectedTag() {
+        if (git == null) {
+            return;
+        }
+        String tag = tagBox.getSelectionModel().getSelectedItem();
+        if (tag == null) {
+            showError("Select a tag to delete.");
+            return;
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Delete tag '" + tag + "'?", ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText("Delete tag");
+        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
+                runGitAction("Delete tag '" + tag + "'", () -> git.deleteTag(tag),
+                        this::loadTags));
+    }
+
+    // ------------------------------------------------------------------
+    // Stash
+    // ------------------------------------------------------------------
+
+    private void stashChanges() {
+        if (git == null) {
+            return;
+        }
+        Alert confirm = new Alert(Alert.AlertType.CONFIRMATION,
+                "Stash all staged and unstaged changes?",
+                ButtonType.YES, ButtonType.NO);
+        confirm.setHeaderText("Stash changes");
+        confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b ->
+                runGitAction("Stash", () -> git.stash(), this::refreshStashButton));
+    }
+
+    private void popStash() {
+        if (git == null) {
+            return;
+        }
+        runGitAction("Pop stash", () -> git.stashPop(), this::refreshStashButton);
+    }
+
+    private void refreshStashButton() {
+        if (git == null) {
+            return;
+        }
+        GitService service = git;
+        Task<Boolean> task = new Task<>() {
+            @Override
+            protected Boolean call() throws Exception {
+                return service.hasStash();
+            }
+        };
+        task.setOnSucceeded(e -> popStashBtn.setDisable(!task.getValue()));
+        Thread thread = new Thread(task, "stash-check");
+        thread.setDaemon(true);
+        thread.start();
+    }
+
+    // ------------------------------------------------------------------
     // Working changes tab
     // ------------------------------------------------------------------
 
     private TableView<WorkDirChange> workTable;
     private final ObservableList<WorkDirChange> workData = FXCollections.observableArrayList();
+    private Button popStashBtn;
 
     private javafx.scene.Node buildWorkingChangesView() {
         workTable = new TableView<>();
@@ -434,10 +599,16 @@ public class App extends Application {
         commitBtn.setOnAction(e -> commitStaged());
         Button discardBtn = new Button("Discard changes...");
         discardBtn.setOnAction(e -> discardSelected());
+        Button stashBtn = new Button("Stash");
+        stashBtn.setOnAction(e -> stashChanges());
+        popStashBtn = new Button("Pop stash");
+        popStashBtn.setDisable(true);
+        popStashBtn.setOnAction(e -> popStash());
 
         HBox buttons = new HBox(8, refreshBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
                 stageBtn, unstageBtn, stageAllBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
-                commitBtn, discardBtn);
+                commitBtn, discardBtn, new Separator(javafx.geometry.Orientation.VERTICAL),
+                stashBtn, popStashBtn);
         buttons.setPadding(new Insets(8));
 
         BorderPane pane = new BorderPane();

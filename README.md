@@ -53,7 +53,7 @@ java --module-path /path/to/javafx-sdk-24.0.2/lib --add-modules javafx.controls,
 6. ~~Stage and commit changes from within the app.~~ (done)
 7. ~~Search/filter the commit history.~~ (done)
 8. ~~Create/switch/delete branches from the UI.~~ (done)
-9. Create/switch to tags, or view the stash.
+9. ~~Create/switch to tags, or view the stash.~~ (done)
 10. Dark theme / UI polish.
 
 ## Notes

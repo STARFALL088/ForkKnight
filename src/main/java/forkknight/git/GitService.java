@@ -214,6 +214,64 @@ public class GitService {
         }
     }
 
+    /**
+     * Tags in the repository, ordered by the recency of the commit they
+     * point at (newest first). Lightweight tags carry no creation date, so
+     * commit position is used; tags off-branch history sort last.
+     */
+    public List<String> tags() throws IOException, InterruptedException {
+        List<String> names = linesOf(run("for-each-ref",
+                "--format=%(refname:short)", "refs/tags"));
+        if (names.size() <= 1) {
+            return names;
+        }
+        // Map each commit hash to its position in HEAD's history (0 = newest).
+        java.util.Map<String, Integer> position = new java.util.HashMap<>();
+        List<Commit> history = log();
+        for (int i = 0; i < history.size(); i++) {
+            position.put(history.get(i).hash(), i);
+        }
+        record TagInfo(String name, int index) {}
+        List<TagInfo> infos = new ArrayList<>();
+        for (String name : names) {
+            String hash = tryRun("rev-list", "-n", "1", name);
+            Integer idx = hash == null || hash.isBlank()
+                    ? null : position.get(hash.strip());
+            infos.add(new TagInfo(name, idx == null ? Integer.MAX_VALUE : idx));
+        }
+        infos.sort((a, b) -> {
+            int byIndex = Integer.compare(a.index(), b.index());
+            return byIndex != 0 ? byIndex : a.name().compareTo(b.name());
+        });
+        return infos.stream().map(TagInfo::name).toList();
+    }
+
+    /** Creates a lightweight tag at the given commit (HEAD if null). */
+    public void createTag(String name, String hash) throws IOException, InterruptedException {
+        List<String> args = new ArrayList<>();
+        args.add("tag");
+        args.add(name);
+        if (hash != null && !hash.isBlank()) {
+            args.add(hash);
+        }
+        run(args.toArray(new String[0]));
+    }
+
+    /** Deletes a local tag. */
+    public void deleteTag(String name) throws IOException, InterruptedException {
+        run("tag", "-d", name);
+    }
+
+    /** Commit the named tag points at. */
+    public Commit tagCommit(String name) throws IOException, InterruptedException {
+        String hash = run("rev-list", "-n", "1", name).strip();
+        List<Commit> commits = log(hash, 1);
+        if (commits.isEmpty()) {
+            throw new IOException("Tag " + name + " does not point at a commit");
+        }
+        return commits.get(0);
+    }
+
     /** Throws when the worktree has staged or unstaged changes. */
     public void requireCleanWorktree() throws IOException, InterruptedException {
         List<WorkDirChange> changes = status();
@@ -221,6 +279,33 @@ public class GitService {
             throw new IOException("Uncommitted changes in " + changes.size()
                     + " file(s); commit or discard them first.");
         }
+    }
+
+    /** Stashes staged and unstaged changes; throws when nothing to stash. */
+    public String stash() throws IOException, InterruptedException {
+        requireDirtyWorktree("Nothing to stash.");
+        run("stash", "push", "--include-untracked", "-m", "ForkKnight stash");
+        String ref = tryRun("rev-parse", "-q", "--verify", "refs/stash");
+        return ref == null ? "" : ref.strip();
+    }
+
+    /** Throws when the worktree is completely clean. */
+    private void requireDirtyWorktree(String message)
+            throws IOException, InterruptedException {
+        if (status().isEmpty()) {
+            throw new IOException(message);
+        }
+    }
+
+    /** True when at least one stash entry exists. */
+    public boolean hasStash() throws IOException, InterruptedException {
+        String out = tryRun("rev-parse", "-q", "--verify", "refs/stash");
+        return out != null && !out.isBlank();
+    }
+
+    /** Applies the most recent stash, keeping it in the stash list. */
+    public void stashPop() throws IOException, InterruptedException {
+        run("stash", "pop");
     }
 
     /** Commits the staged changes with the given message. */
@@ -294,15 +379,20 @@ public class GitService {
     // ------------------------------------------------------------------
 
     private String run(String... args) throws IOException, InterruptedException {
-        return runCommand(false, args);
+        return runCommand(false, false, args);
     }
 
     /** Like {@link #run}, but preserves NUL separators in the output. */
     private String runNul(String... args) throws IOException, InterruptedException {
-        return runCommand(true, args);
+        return runCommand(true, false, args);
     }
 
-    private String runCommand(boolean keepNul, String... args)
+    /** Like {@link #run}, but returns null instead of throwing on failure. */
+    private String tryRun(String... args) throws IOException, InterruptedException {
+        return runCommand(false, true, args);
+    }
+
+    private String runCommand(boolean keepNul, boolean tolerateFailure, String... args)
             throws IOException, InterruptedException {
         String[] cmd = new String[args.length + 3];
         cmd[0] = "git";
@@ -329,11 +419,28 @@ public class GitService {
         errThread.join(5000);
 
         if (process.exitValue() != 0) {
+            if (tolerateFailure) {
+                return null;
+            }
             throw new IOException("git " + args[0] + " failed (exit "
                     + process.exitValue() + "): " + err.toString().trim());
         }
         String result = out.toString();
         return keepNul ? result : result.replace("\0", "");
+    }
+
+    /** Splits raw output into non-blank trimmed lines. */
+    private static List<String> linesOf(String out) {
+        List<String> lines = new ArrayList<>();
+        if (out == null) {
+            return lines;
+        }
+        for (String line : out.split("\n")) {
+            if (!line.isBlank()) {
+                lines.add(line.strip());
+            }
+        }
+        return lines;
     }
 
     private static Thread drain(Process process, java.io.InputStream stream, StringBuilder into) {

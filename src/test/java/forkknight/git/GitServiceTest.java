@@ -364,4 +364,67 @@ class GitServiceTest {
         service.deleteBranch("side", true);
         assertFalse(service.branches().contains("side"));
     }
+
+    // ------------------------------------------------------------------
+    // Tags and stash
+    // ------------------------------------------------------------------
+
+    @Test
+    void createAndListTags() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        git(service, "commit", "-q", "--allow-empty", "-m", "second");
+        service.createTag("v2", null);          // HEAD
+        service.createTag("v1", service.log().get(1).hash());
+
+        List<String> tags = service.tags();
+        assertEquals(List.of("v2", "v1"), tags);
+        assertEquals("second", service.tagCommit("v2").summary());
+        assertEquals("base", service.tagCommit("v1").summary());
+    }
+
+    @Test
+    void deleteTagRemovesRef() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        service.createTag("gone", null);
+        service.deleteTag("gone");
+        assertTrue(service.tags().isEmpty());
+    }
+
+    @Test
+    void tagCommitRejectsUnknownTag() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        assertThrows(Exception.class, () -> service.tagCommit("nope"));
+    }
+
+    @Test
+    void stashRoundTrip() throws Exception {
+        GitService service = initRepo();
+        Path repo = service.getRepoDir().toPath();
+        Files.writeString(repo.resolve("w.txt"), "work in progress\n");
+        git(service, "add", "w.txt");
+        git(service, "commit", "-qm", "base");
+        Files.writeString(repo.resolve("w.txt"), "stashed content\n");
+        Files.writeString(repo.resolve("u.txt"), "untracked\n");
+
+        assertFalse(service.hasStash());
+        service.stash();
+        assertTrue(service.hasStash());
+        assertTrue(service.status().isEmpty(), "worktree should be clean after stash");
+
+        service.stashPop();
+        assertFalse(service.hasStash());
+        assertEquals("stashed content\n", Files.readString(repo.resolve("w.txt")));
+        assertEquals("untracked\n", Files.readString(repo.resolve("u.txt")));
+    }
+
+    @Test
+    void stashWithNothingToStashFails() throws Exception {
+        GitService service = initRepo();
+        git(service, "commit", "-q", "--allow-empty", "-m", "base");
+        assertThrows(IOException.class, service::stash);
+        assertFalse(service.hasStash());
+    }
 }
