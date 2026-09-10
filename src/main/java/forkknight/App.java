@@ -1,13 +1,16 @@
 package forkknight;
 
 import forkknight.git.Commit;
+import forkknight.git.CommitFilters;
 import forkknight.git.FileChange;
 import forkknight.git.GitService;
 import forkknight.git.WorkDirChange;
 import javafx.application.Application;
+import javafx.beans.binding.Bindings;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
+import javafx.collections.transformation.FilteredList;
 import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Orientation;
@@ -35,8 +38,11 @@ public class App extends Application {
     private TableView<Commit> commitTable;
     private TextField repoPathField;
     private final ObservableList<Commit> commitData = FXCollections.observableArrayList();
+    private FilteredList<Commit> filteredCommits;
     private Label statusBar;
     private ComboBox<String> branchBox;
+    private TextField searchField;
+    private ComboBox<String> searchScopeBox;
 
     private DetailsView detailsView;
 
@@ -103,10 +109,29 @@ public class App extends Application {
         msgCol.setMinWidth(300);
 
         commitTable.getColumns().addAll(hashCol, authorCol, dateCol, msgCol);
-        commitTable.setItems(commitData);
+        filteredCommits = new FilteredList<>(commitData, p -> true);
+        commitTable.setItems(filteredCommits);
         commitTable.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
         commitTable.getSelectionModel().selectedItemProperty().addListener(
                 (obs, old, commit) -> onCommitSelected(commit));
+
+        Label searchLabel = new Label("Search:");
+        searchField = new TextField();
+        searchField.setPromptText("Filter commits...");
+        HBox.setHgrow(searchField, javafx.scene.layout.Priority.ALWAYS);
+        searchScopeBox = new ComboBox<>();
+        searchScopeBox.getItems().addAll("Message", "Author", "Hash");
+        searchScopeBox.getSelectionModel().selectFirst();
+        Runnable applyFilter = this::applyCommitFilter;
+        searchField.textProperty().addListener((obs, oldText, newText) -> applyFilter.run());
+        searchScopeBox.valueProperty().addListener((obs, oldV, newV) -> applyFilter.run());
+        Button clearBtn = new Button("Clear");
+        clearBtn.setOnAction(e -> {
+            searchField.clear();
+            searchField.requestFocus();
+        });
+        HBox searchBox = new HBox(8, searchLabel, searchField, searchScopeBox, clearBtn);
+        searchBox.setPadding(new Insets(5, 10, 5, 10));
 
         detailsView = new DetailsView();
 
@@ -122,14 +147,18 @@ public class App extends Application {
         center.setDividerPosition(0, 0.55);
         SplitPane.setResizableWithParent(detailsView.getNode(), true);
 
+        BorderPane historyTab = new BorderPane();
+        historyTab.setTop(searchBox);
+        historyTab.setCenter(center);
+
         TabPane tabs = new TabPane();
-        Tab historyTab = new Tab("History");
-        historyTab.setClosable(false);
-        historyTab.setContent(center);
+        Tab historyTabItem = new Tab("History");
+        historyTabItem.setClosable(false);
+        historyTabItem.setContent(historyTab);
         Tab workTab = new Tab("Working changes");
         workTab.setClosable(false);
         workTab.setContent(buildWorkingChangesView());
-        tabs.getTabs().addAll(historyTab, workTab);
+        tabs.getTabs().addAll(historyTabItem, workTab);
         tabs.getSelectionModel().selectedItemProperty().addListener(
                 (obs, oldTab, newTab) -> {
                     if (newTab == workTab) {
@@ -220,7 +249,7 @@ public class App extends Application {
         };
         task.setOnSucceeded(e -> {
             commitData.addAll(task.getValue());
-            statusBar.setText(commitData.size() + " commits");
+            applyCommitFilter();
             if (commitData.isEmpty()) {
                 commitTable.setPlaceholder(new Label("No commits found."));
             } else {
@@ -232,6 +261,25 @@ public class App extends Application {
         Thread thread = new Thread(task, "log-loader");
         thread.setDaemon(true);
         thread.start();
+    }
+
+    /** Applies the search filter to the commit list and updates the status bar. */
+    private void applyCommitFilter() {
+        String query = searchField.getText();
+        String scope = searchScopeBox.getValue();
+        if (query == null || query.isBlank()) {
+            filteredCommits.setPredicate(null);
+            statusBar.setText(commitData.size() + " commits");
+            return;
+        }
+        filteredCommits.setPredicate(CommitFilters.byScope(scope, query));
+        statusBar.setText(filteredCommits.size() + " of " + commitData.size()
+                + " commits match \"" + query.strip() + "\"");
+        if (filteredCommits.isEmpty() && !commitData.isEmpty()) {
+            commitTable.setPlaceholder(new Label("No commits match the search."));
+        } else if (!commitData.isEmpty()) {
+            commitTable.setPlaceholder(null);
+        }
     }
 
     private void onCommitSelected(Commit commit) {

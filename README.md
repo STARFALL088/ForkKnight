@@ -51,7 +51,7 @@ java --module-path /path/to/javafx-sdk-24.0.2/lib --add-modules javafx.controls,
 4. ~~Allow selecting a commit to view the file tree and diff.~~ (done)
 5. ~~Add branch selector / show all branches in the log.~~ (done)
 6. ~~Stage and commit changes from within the app.~~ (done)
-7. Search/filter the commit history.
+7. ~~Search/filter the commit history.~~ (done)
 8. Create/switch/delete branches from the UI.
 
 ## Notes
