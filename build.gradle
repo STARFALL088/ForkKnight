@@ -8,20 +8,33 @@ repositories {
 }
 
 dependencies {
-    // No additional dependencies for now; we'll use standard JDK and JavaFX
+    testImplementation 'org.junit.jupiter:junit-jupiter:5.10.2'
+    testRuntimeOnly 'org.junit.platform:junit-platform-launcher'
 }
 
 javafx {
-    version = "24.0.2"
+    version = '24.0.2'
     modules = [ 'javafx.controls', 'javafx.fxml' ]
 }
 
-application {
-    mainModule = 'forkknight'
-    mainClass = 'forkknight.App'
+java {
+    sourceCompatibility = JavaVersion.VERSION_17
+    targetCompatibility = JavaVersion.VERSION_17
 }
 
-// Make sure we use UTF-8 encoding
-tasks.withType(JavaCompile) {
+application {
+    mainClass.set('forkknight.App')
+    applicationDefaultJvmArgs = ['--enable-native-access=javafx.graphics']
+}
+
+tasks.withType(JavaCompile).configureEach {
     options.encoding = 'UTF-8'
+}
+
+tasks.withType(Test).configureEach {
+    useJUnitPlatform()
+    testLogging {
+        events 'passed', 'skipped', 'failed'
+        exceptionFormat 'full'
+    }
 }

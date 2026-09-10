@@ -20,6 +20,13 @@ import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
 import java.util.ArrayList;
 import java.util.List;
+import java.util.Map;
+
+import javafx.beans.property.ObjectProperty;
+import javafx.beans.property.SimpleObjectProperty;
+import javafx.beans.property.SimpleStringProperty;
+import javafx.beans.property.StringProperty;
+import javafx.concurrent.Task;
 
 /**
  * ForkKnight - A lightweight Git repository visualizer for JavaFX assignment.
@@ -64,9 +71,16 @@ public class App extends Application {
         authorCol.setCellValueFactory(cell -> cell.getValue().authorProperty());
         authorCol.setMinWidth(150);
 
-        TableColumn<Commit, String> dateCol = new TableColumn<>("Date");
+        TableColumn<Commit, LocalDate> dateCol = new TableColumn<>("Date");
         dateCol.setCellValueFactory(cell -> cell.getValue().dateProperty());
         dateCol.setMinWidth(100);
+        dateCol.setCellFactory(col -> new TableCell<>() {
+            @Override
+            protected void updateItem(LocalDate item, boolean empty) {
+                super.updateItem(item, empty);
+                setText(empty || item == null ? null : item.format(DateTimeFormatter.ISO_LOCAL_DATE));
+            }
+        });
 
         TableColumn<Commit, String> msgCol = new TableColumn<>("Message");
         msgCol.setCellValueFactory(cell -> cell.getValue().messageProperty());
@@ -193,7 +207,9 @@ public class App extends Application {
         };
 
         // Run task on background thread
-        new Thread(task).setDaemon(true).start();
+        Thread thread = new Thread(task);
+        thread.setDaemon(true);
+        thread.start();
     }
 
     /**
@@ -229,17 +245,17 @@ public class App extends Application {
         }
 
         // JavaFX properties for TableView
-        public javafx.beans.property.StringProperty hashProperty() {
-            return javafx.beans.property.SimpleStringProperty(this, "hash", hash);
+        public StringProperty hashProperty() {
+            return new SimpleStringProperty(this, "hash", hash);
         }
-        public javafx.beans.property.StringProperty authorProperty() {
-            return javafx.beans.property.SimpleStringProperty(this, "author", author);
+        public StringProperty authorProperty() {
+            return new SimpleStringProperty(this, "author", author);
         }
-        public javafx.beans.property.ObjectProperty<LocalDate> dateProperty() {
-            return javafx.beans.property.SimpleObjectProperty<>(this, "date", date);
+        public ObjectProperty<LocalDate> dateProperty() {
+            return new SimpleObjectProperty<>(this, "date", date);
         }
-        public javafx.beans.property.StringProperty messageProperty() {
-            return javafx.beans.property.SimpleStringProperty(this, "message", message);
+        public StringProperty messageProperty() {
+            return new SimpleStringProperty(this, "message", message);
         }
     }
 }
