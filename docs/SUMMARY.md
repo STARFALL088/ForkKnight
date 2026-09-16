@@ -20,8 +20,8 @@ This repository contains comprehensive documentation for the ForkKnight project,
 
 ## Current Project State (mirrors feature.md)
 
-- 17 commits; 79 unit tests green (Chronicle 33, Scryer 14,
-  KnightMemory 9, Weave 8, Chronicler 8, Vault 7)
+- 81 unit tests green (Chronicle 34, Scryer 14,
+  KnightMemory 10, Weave 8, Chronicler 8, Vault 7)
 - Feature-complete for local work: woven DAG history, details + diffs,
   staging/committing (with amend), branch/tag/merge management with
   dispute handling, stash, three-lens search, statistics, remote

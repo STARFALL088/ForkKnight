@@ -112,23 +112,24 @@ Remembers:
 - the last realm (auto-reopened on launch when it still exists)
 - the favored sight (night/day theme, saved on switch)
 - window bounds (restored within sane minimums)
+- feat annotations (local notes per hash)
 
-**Test suite: 79 green**
+### Chronicle Annotations (Knight's Notes)
+Knights can attach persistent local annotations to any feat in the realm without touching git objects or remote history. Stored in `KnightMemory` under `note.<hash>`, exposed with an "Annotate..." dialog in `TalePane`, and marked with a scroll badge (`📜`) in the chronicle table.
+
+### Trailing Banners & Campaign Divergence ("Banners Roll")
+`tallyDivergence` measures ahead/behind feat counts relative to the raised banner (`git rev-list --left-right --count`). The "Banners Roll..." dialog (Ctrl+B / "Roll..." button) displays all banners, their frontier marks, and standing vs the active banner (`+N / -M`), allowing one-click marching.
+
+**Test suite: 81 green**
 
 ---
 
 ## Planned Next (ideas, in rough order)
 
 1. **Undo/redo of realm actions** - an action history with inverse ops
-2. **Chronicle annotations** - notes attached to feats (local only,
-   stored in the Knight's Memory, keyed by hash)
-3. **Trailing banners view** - a full banners panel with ahead/behind
-   counts vs the raised banner
-4. **Weave polish** - hover tooltips with feat summaries, clickable
-   curve selection
-5. **Distribution** - jpackage a self-contained launcher
+2. **Weave polish** - hover tooltips with feat summaries, clickable curve selection
+3. **Distribution** - jpackage a self-contained launcher
 
 ---
 
-*Last updated: the knight now remembers his realm, his sight and his
-place; the planned backlog is fresh ideas.*
+*Last updated: chronicle annotations and banners roll divergence now live in the realm.*
