@@ -320,6 +320,26 @@ history is never rewritten backwards, only amended at the tip.
 **Underlying Git:** `git show <feat-hash>` / `git log -p`
 **Knightly Term:** Requesting a full recount of the feat from the chronicle
 
+## Workflow 10: Bookmarking Realms (and What Persists)
+
+### Scenario: You serve several repositories and want one-click access to each.
+
+**In ForkKnight:**
+1. Open the realm you want to keep (Realm -> Seek Realm...)
+2. Realm -> Bookmark Current Realm... - name it (defaults to the folder name)
+3. Later: Realm -> Bookmarked Realms... lists the roll; pick one (or
+   double-click) to open it
+
+**What persists (the Ledger, SQLite at ~/.forkknight/forkknight.db):**
+- the last realm, window bounds and the favored sight
+- knight's notes on feats ("Annotate..." in the tale pane)
+- realm bookmarks
+
+**Underlying Git:** none - bookmarks are ForkKnight's own ledger, not
+part of the repository
+**Knightly Term:** Writing a realm's name into the ledger so it can be
+summoned again
+
 ## Best Practices for Using ForkKnight
 
 ### For Effective Learning

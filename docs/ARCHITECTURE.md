@@ -68,8 +68,9 @@ This creates a clean separation where:
 6. **Weave** - DAG lane assignment for the commit graph column
 7. **Scryer** - Search index (trie + bigram inverted index) plus recency/hero lenses
 8. **Chronicler** - Realm statistics via bounded top-K min-heaps
-9. **KnightMemory** - Settings persistence (~/.forkknight/memory)
-10. **Dispatch** - A single file change entry
+9. **KnightMemory** - Memory facade: settings, notes and realm bookmarks
+10. **KnightDatabase** - SQLite persistence (~/.forkknight/forkknight.db, JDBC)
+11. **Dispatch** - A single file change entry
 
 ### UI Layer
 

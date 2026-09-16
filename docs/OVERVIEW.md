@@ -33,7 +33,8 @@ The project follows a modular structure with clearly separated concerns:
    - `Dispatch.java` - A single file change entry
    - `Scryer.java` - Trie + bigram inverted index search, plus recency/hero lenses
    - `Chronicler.java` - Realm statistics via bounded top-K heaps (powers the Council)
-   - `KnightMemory.java` - Settings vault at ~/.forkknight/memory
+   - `KnightMemory.java` - Memory facade (settings, notes, realm bookmarks)
+   - `KnightDatabase.java` - SQLite persistence at ~/.forkknight/forkknight.db
 
 2. **forkknight** (root) - Application shell and dialogs
    - `App.java` - Main JavaFX application: UI shell, menus, keyboard
@@ -60,12 +61,13 @@ The project follows a modular structure with clearly separated concerns:
 
 ## Current State
 
-- 17 commits on `main`; 79 unit tests green
+- 21 commits on `main`; 80 unit tests green
 - Feature-complete for local work: history with a woven DAG graph,
   details + diffs, staging/committing (with amend), branch/tag/merge
   management, stash, search with lenses, statistics, and remote
   operations (fetch/pull/push)
-- Settings persist across sessions (last realm, theme, window bounds)
+- Settings, notes and realm bookmarks persist in an embedded SQLite
+  ledger (last realm, theme, window bounds included)
 
 ## Getting Started
 

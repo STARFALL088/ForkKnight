@@ -147,19 +147,21 @@ path heat) without ever sorting the full data set.
 - **Path heat**: churn counted across per-feat tolls (hash map), then top-k
 - **Fusion count / campaign span**: single linear scans
 
-## KnightMemory - Atomic Tiny-Config Persistence
+## KnightMemory / KnightDatabase - The Ledger (SQLite Persistence)
 
-A key=value vault at `~/.forkknight/memory` with deliberately minimal
-machinery:
+The old key=value vault (`~/.forkknight/memory`) has been replaced by an
+embedded SQLite database; `KnightMemory` forwards every call to
+`KnightDatabase` (see DATABASE.md):
 
-- **Escape discipline**: only `\n` and `\\` are escaped (a line-based
-  format needs nothing else), keeping reads and writes trivially
-  auditable
-- **Atomic saves**: writes go to a staging file first, then
-  `Files.move(..., ATOMIC_MOVE)` swaps it in - a crash mid-save can
-  never leave a half-written memory
-- **Corruption tolerance**: unreadable files read as empty; scribbled
-  lines (no `=`, empty keys, comments) are skipped rather than fatal
+- **Schema on first connection**: `settings`, `notes` and
+  `realm_bookmarks` tables are created with `CREATE TABLE IF NOT
+  EXISTS ...`
+- **Upserts as create-or-update**: `INSERT ... ON CONFLICT(key) DO
+  UPDATE SET value = excluded.value` collapses insert and update into
+  one prepared statement
+- **Connection per operation**: a fresh `DriverManager.getConnection`
+  in try-with-resources keeps the class safe for background tasks at
+  negligible cost (local SQLite files open cheaply)
 
 ## Performance Summary
 
@@ -170,6 +172,6 @@ machinery:
 | **Chronicle** | Git parsing | NUL-separated + dual-stream | O(L) per command | O(output size) |
 | **Vault** | Diff caching | LRU cache | O(1) get/put | O(capacity) |
 | **Chronicler** | Statistics | Bounded min-heap top-K | O(n log k) leaders | O(k) heap |
-| **KnightMemory** | Settings | Atomic swap persistence | O(entries) read/write | O(entries) |
+| **KnightMemory / KnightDatabase** | Persistence (SQLite) | Prepared statements + upserts | O(1) keyed access | O(rows) |
 
 These algorithms demonstrate sophisticated computer science techniques applied to enhance the Git client experience while maintaining the educational knightly vocabulary theme.

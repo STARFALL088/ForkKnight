@@ -181,12 +181,20 @@ feat count, fusion count, campaign span, heroes' standing, busiest
 days, and the hottest paths (sampled from the newest 200 feats). All
 gathering happens on a worker thread.
 
+## Realm Bookmarks
+
+- Realm -> Bookmark Current Realm... names the open realm (defaults to
+  the folder name) and stores it on the roll
+- Realm -> Bookmarked Realms... lists every named realm; select one and
+  press Open (or double-click) to march there
+- Bookmarks live in the ledger (SQLite), so they survive restarts
+
 ## Theme and Interface
 
 - Sight -> Night Sight / Day Sight (Ctrl+Shift+D) toggles the theme;
   the choice is remembered
-- Window bounds and the last realm persist across sessions via the
-  Knight's Memory (~/.forkknight/memory)
+- Window bounds, the last realm, notes and bookmarks persist across
+  sessions in the SQLite ledger (~/.forkknight/forkknight.db)
 
 ## Keyboard Shortcuts
 

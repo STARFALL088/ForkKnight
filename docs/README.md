@@ -45,7 +45,8 @@ a single codex inside `Chronicle` and never leaks into the UI.
   - `Weave` - DAG lane assignment for the commit graph
   - `Vault` - O(1) LRU cache for diffs
   - `Chronicler` - realm statistics via bounded top-K heaps
-  - `KnightMemory` - settings vault at ~/.forkknight/memory
+  - `KnightMemory` - the knight's memory facade (settings, notes, bookmarks)
+  - `KnightDatabase` - SQLite vault at ~/.forkknight/forkknight.db (JDBC)
 - `src/main/java/forkknight/` - `App` (UI shell), `SealDialog`, `CouncilDialog`
 - `src/main/java/forkknight/ui/` - `TalePane` (feat details + diff)
 - `src/main/resources/forkknight/dark-theme.css` - Night Sight theme
@@ -65,8 +66,10 @@ a single codex inside `Chronicle` and never leaks into the UI.
   evict - caching per-file diffs.
 - **Chronicler**: bounded min-heap top-K selection (O(n log k)) powers
   the Council's leader boards (heroes, days, path heat).
-- **KnightMemory**: escape-aware key=value vault with atomic
-  write-then-move saves.
+- **KnightMemory / KnightDatabase**: the memory facade now rides on an
+  embedded SQLite vault - JDBC prepared statements and
+  `ON CONFLICT ... DO UPDATE` upserts; the schema is created on the
+  first connection.
 - **Chronicle**: NUL-separated porcelain parsing (rename-aware), a
   compile-time codex guard, and dual-stream subprocess draining with
   timeouts.
@@ -90,15 +93,26 @@ java --module-path /path/to/javafx-sdk-24.0.2/lib \
      -cp build/classes/java/main:build/resources/main forkknight.App
 ```
 
+## Persistence (the Ledger)
+
+The knight's memory rides on an embedded SQLite database at
+`~/.forkknight/forkknight.db` (driver `org.xerial:sqlite-jdbc`, no
+server to install). Three tables - `settings`, `notes`,
+`realm_bookmarks` - carry the last realm, theme, window bounds, feat
+annotations and realm bookmarks. Realm menu: "Bookmark Current
+Realm..." and "Bookmarked Realms..." (dialog opens the chosen realm).
+
 ## Testing
 
 ```bash
 ./gradlew test
 ```
 
-81 tests cover the Chronicle codex (surveys, tolls, muster, banners,
+80 tests cover the Chronicle codex (surveys, tolls, muster, banners,
 sigils, Kamui, fusion, allies, re-seal, divergence tallies), the Scryer
 (all scopes, prefixes, multi-word AND, recency/hero lenses), the Weave
 (lanes, forks, recycling, deep bloodlines), the Vault (LRU eviction,
-purge, capacity), the Chronicler (rankings, ties, empty trails) and the
-KnightMemory (round trips, escapes, corruption tolerance, feat notes).
+purge, capacity), the Chronicler (rankings, ties, empty trails), the
+KnightDatabase (settings/notes/bookmark CRUD on a temp SQLite file) and
+the KnightMemory (settings and feat notes round trips through the
+database).

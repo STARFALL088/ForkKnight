@@ -57,7 +57,7 @@ Based on analysis of the ForkKnight codebase, here are suggestions for potential
 ### 2. Improved Navigation and Search
 - **Enhanced Scryer integration**: Better integration of the search functionality throughout the UI
 - **Filtering capabilities**: Ability to filter commits by author, date range, message content, etc.
-- **Bookmarking/favorites**: Ability to bookmark important commits or branches
+- **Bookmarking/favorites** (partial): realm bookmarks shipped (Realm menu, SQLite-backed); commit/branch favorites still open
 
 ### 3. Accessibility and Usability
 - **Keyboard navigation**: Improve keyboard accessibility for all features
@@ -163,7 +163,8 @@ Several former suggestions have shipped and are documented in
 FEATURES.md:
 - Keyboard shortcuts (Ctrl+O/N/R/F/I/Q, F5, Ctrl+Shift+D)
 - Filtering by author and date range (the scrying lenses)
-- Window-size/theme/realm persistence (the Knight's Memory)
+- SQLite persistence (the Ledger: settings, notes, realm bookmarks)
+- Window-size/theme/realm persistence (the Knight's Memory, now backed by the Ledger)
 - Operation history (partial): every realm action refreshes the trail
   and field, and the status bar narrates the running action
 - Amend support (Re-seal)

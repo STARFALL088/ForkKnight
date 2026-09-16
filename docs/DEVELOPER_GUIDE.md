@@ -128,7 +128,8 @@ ForkKnight/
 │   │   │       │   ├── Weave.java            # Commit graph lane assignment
 │   │   │       │   ├── Vault.java            # LRU cache implementation
 │   │   │       │   ├── Chronicler.java       # Statistics via bounded top-K heaps
-│   │   │       │   └── KnightMemory.java     # Settings persistence
+│   │   │       │   ├── KnightMemory.java     # Memory facade (settings, notes, bookmarks)
+│   │   │       │   └── KnightDatabase.java   # SQLite persistence (JDBC)
 │   │   │       └── ui/                       # User interface components
 │   │   │           └── TalePane.java         # Feat details + diff view
 │   │   └── resources/
@@ -137,17 +138,18 @@ ForkKnight/
 │   └── test/
 │       └── java/
 │           └── forkknight/core/              # Tests for all core classes
-│               ├── ChronicleTest.java        # 33 tests
+│               ├── ChronicleTest.java        # 34 tests
 │               ├── ScryerTest.java          # 14 tests
 │               ├── WeaveTest.java           # 8 tests
 │               ├── ChroniclerTest.java      # 8 tests
-│               ├── KnightMemoryTest.java    # 9 tests
+│               ├── KnightMemoryTest.java    # 6 tests
+│               ├── KnightDatabaseTest.java  # 3 tests
 │               └── VaultTest.java           # 7 tests
 ```
 
 **Note**: there is no `forkknight.git` package - the rebrand folded the
 entire git CLI into `Chronicle`'s private CODEX. All tests live under
-`forkknight.core` (79 total).
+`forkknight.core` (80 total).
 
 ## Key Implementation Details
 

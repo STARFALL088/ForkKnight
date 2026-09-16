@@ -105,10 +105,7 @@ The "Still" button clears all three at once. Hero options refresh with
 every survey; the previous choice is re-selected when it still exists.
 
 ### The Knight's Memory (settings persistence)
-`KnightMemory`: a tiny escape-aware key=value vault at
-`~/.forkknight/memory` with atomic write-then-move saves (staging file +
-ATOMIC_MOVE), comment/blank tolerance and corruption-safe reads.
-Remembers:
+`KnightMemory` - now a thin facade over the Ledger (SQLite). Remembers:
 - the last realm (auto-reopened on launch when it still exists)
 - the favored sight (night/day theme, saved on switch)
 - window bounds (restored within sane minimums)
@@ -120,7 +117,16 @@ Knights can attach persistent local annotations to any feat in the realm without
 ### Trailing Banners & Campaign Divergence ("Banners Roll")
 `tallyDivergence` measures ahead/behind feat counts relative to the raised banner (`git rev-list --left-right --count`). The "Banners Roll..." dialog (Ctrl+B / "Roll..." button) displays all banners, their frontier marks, and standing vs the active banner (`+N / -M`), allowing one-click marching.
 
-**Test suite: 81 green**
+### The Ledger (SQLite persistence + realm bookmarks)
+`KnightDatabase` moves the knight's memory onto an embedded SQLite
+database (`~/.forkknight/forkknight.db`, driver `org.xerial:sqlite-jdbc`
+via JDBC; prepared statements, `ON CONFLICT ... DO UPDATE` upserts,
+schema created on first connection). Tables: `settings`, `notes`,
+`realm_bookmarks`. New Realm-menu orders: "Bookmark Current Realm..."
+and "Bookmarked Realms..." - the dialog lists bookmarked realms and
+opens the one chosen (double-click works too).
+
+**Test suite: 80 green**
 
 ---
 
@@ -132,4 +138,4 @@ Knights can attach persistent local annotations to any feat in the realm without
 
 ---
 
-*Last updated: chronicle annotations and banners roll divergence now live in the realm.*
+*Last updated: the Ledger landed - SQLite persistence and realm bookmarks.*

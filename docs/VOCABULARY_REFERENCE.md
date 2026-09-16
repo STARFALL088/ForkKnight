@@ -33,7 +33,8 @@ This document provides a complete reference of ForkKnight's knightly vocabulary 
 | Emissary | git push | Carrying the raised banner's feats to an ally |
 | Scry | search | Finding specific content in the realm's history |
 | The Council | repository statistics | Leader boards of heroes, days and path heat |
-| Knight's Memory | settings persistence | The ~/.forkknight/memory vault |
+| Knight's Memory | settings persistence | Facade over the ledger (settings, notes, realm bookmarks) |
+| The Ledger | SQLite database | ~/.forkknight/forkknight.db - the realm's tables |
 | Night/Day Sight | dark/light theme | Switching between UI themes |
 | Hero | author | The person who created a feat |
 | Banish | discard changes | Removing uncommitted changes |
