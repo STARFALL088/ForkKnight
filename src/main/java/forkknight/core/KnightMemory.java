@@ -1,157 +1,76 @@
 package forkknight.core;
 
-import java.io.IOException;
-import java.nio.charset.StandardCharsets;
-import java.nio.file.Files;
-import java.nio.file.Path;
-import java.nio.file.StandardOpenOption;
 import java.util.HashMap;
 import java.util.Map;
 import java.util.Optional;
 
 /**
- * The knight's memory: a tiny key=value vault persisted under the home
- * directory (.forkknight/memory). Hand-rolled on purpose - the realm
- * carries no JSON libraries, and the format is deliberately simple:
- *
- *   key=value        (one per line)
- *   # comments and blank lines are ignored
- *   \\n and \\\\ escapes decode to newline and backslash
- *
- * Writes are atomic-ish (write-then-move) so a crash mid-save can never
- * leave a half-written memory behind.
+ * Memory layer that forwards all persistence to {@link KnightDatabase}.
+ * Provides settings, notes, and realm bookmark management.
  */
 public final class KnightMemory {
-
-    private static final String DIRECTORY = ".forkknight";
-    private static final String FILE_NAME = "memory";
-
-    private final Path file;
+    private final KnightDatabase db;
 
     public KnightMemory() {
-        this(Path.of(System.getProperty("user.home", "."), DIRECTORY, FILE_NAME));
+        this.db = new KnightDatabase();
+        // Database schema is initialized lazily by KnightDatabase.
     }
 
-    public KnightMemory(Path file) {
-        this.file = file;
+    KnightMemory(KnightDatabase db) {
+        this.db = db;
     }
 
-    public Path getFile() {
-        return file;
-    }
-
-    /** Reads the whole memory; missing or broken files read as empty. */
+    /** Reads all settings from the database. */
     public Map<String, String> recallAll() {
-        Map<String, String> memory = new HashMap<>();
-        if (!Files.isRegularFile(file)) {
-            return memory;
-        }
-        try {
-            for (String line : Files.readAllLines(file, StandardCharsets.UTF_8)) {
-                String trimmed = line.strip();
-                if (trimmed.isEmpty() || trimmed.startsWith("#")) {
-                    continue;
-                }
-                int eq = trimmed.indexOf('=');
-                if (eq <= 0) {
-                    continue;   // no '=' or empty key: skip the scribble
-                }
-                memory.put(trimmed.substring(0, eq), unescape(trimmed.substring(eq + 1)));
-            }
-        } catch (IOException ignored) {
-            // unreadable memory: start with a blank slate rather than fail
-        }
-        return memory;
+        return new HashMap<>(db.getAllSettings());
     }
 
     public Optional<String> recall(String key) {
-        return Optional.ofNullable(recallAll().get(key));
+        return db.getSetting(key);
     }
 
     public Optional<String> recall(String key, String fallback) {
-        return Optional.ofNullable(recallAll().getOrDefault(key, fallback));
+        return db.getSetting(key).or(() -> Optional.ofNullable(fallback));
     }
 
-    /** Adds or updates one key while preserving every other entry. */
-    public void remember(String key, String value) throws IOException {
-        Map<String, String> memory = recallAll();
-        memory.put(key, value == null ? "" : value);
-        writeAll(memory);
+    /** Stores or updates a setting. */
+    public void remember(String key, String value) {
+        db.setSetting(key, value == null ? "" : value);
     }
 
-    /** Remembers a note for a feat hash; passing null or blank forgets the note. */
-    public void rememberNote(String hash, String note) throws IOException {
-        if (hash == null || hash.isBlank()) {
-            return;
-        }
+    /** Stores or deletes a note for a feat hash. */
+    public void rememberNote(String hash, String note) {
+        if (hash == null || hash.isBlank()) return;
         if (note == null || note.isBlank()) {
-            forget("note." + hash);
+            db.deleteNote(hash);
         } else {
-            remember("note." + hash, note);
+            db.setNote(hash, note);
         }
     }
 
-    /** Recalls a feat note if present. */
     public Optional<String> recallNote(String hash) {
-        if (hash == null || hash.isBlank()) {
-            return Optional.empty();
-        }
-        return recall("note." + hash);
+        if (hash == null || hash.isBlank()) return Optional.empty();
+        return db.getNote(hash);
     }
 
-    /** Forgets one key; missing keys are a no-op. */
-    public void forget(String key) throws IOException {
-        Map<String, String> memory = recallAll();
-        if (memory.remove(key) != null) {
-            writeAll(memory);
-        }
+    public void forget(String key) {
+        db.deleteSetting(key);
     }
 
-    /** Replaces the whole memory. */
-    public void writeAll(Map<String, String> memory) throws IOException {
-        StringBuilder out = new StringBuilder();
-        out.append("# ForkKnight's memory - knight keeps what matters\n");
-        for (Map.Entry<String, String> entry : memory.entrySet()) {
-            out.append(entry.getKey()).append('=')
-                    .append(escape(entry.getValue())).append('\n');
-        }
-        Files.createDirectories(file.getParent());
-        Path staging = file.resolveSibling(file.getFileName() + ".staging");
-        Files.writeString(staging, out.toString(), StandardCharsets.UTF_8,
-                StandardOpenOption.CREATE, StandardOpenOption.TRUNCATE_EXISTING,
-                StandardOpenOption.WRITE);
-        Files.move(staging, file,
-                java.nio.file.StandardCopyOption.REPLACE_EXISTING,
-                java.nio.file.StandardCopyOption.ATOMIC_MOVE);
+    // Realm bookmark helpers -------------------------------------------------
+    public Map<String, String> recallAllBookmarks() {
+        return db.getAllBookmarks();
     }
 
-    // ------------------------------------------------------------------
-    // Escaping: only \n and \\ need it for a line-based format
-    // ------------------------------------------------------------------
-
-    private static String escape(String raw) {
-        return raw.replace("\\", "\\\\").replace("\n", "\\n");
+    public Optional<String> recallBookmarkName(String realmPath) {
+        return db.getBookmarkName(realmPath);
     }
 
-    private static String unescape(String raw) {
-        StringBuilder out = new StringBuilder(raw.length());
-        for (int i = 0; i < raw.length(); i++) {
-            char c = raw.charAt(i);
-            if (c == '\\' && i + 1 < raw.length()) {
-                char next = raw.charAt(++i);
-                if (next == 'n') {
-                    out.append('\n');
-                    continue;
-                }
-                if (next == '\\') {
-                    out.append('\\');
-                    continue;
-                }
-                out.append('\\').append(next);
-                continue;
-            }
-            out.append(c);
-        }
-        return out.toString();
+    public void setBookmarkName(String realmPath, String name) {
+        db.setBookmark(realmPath, name);
+    }
+
+    public void forgetBookmark(String realmPath) {
+        db.deleteBookmark(realmPath);
     }
 }

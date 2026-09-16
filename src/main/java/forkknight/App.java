@@ -361,18 +361,13 @@ public class App extends Application {
         darkTheme = !"day".equals(memory.recall("sight").orElse("night"));
     }
 
-    /** Writes everything worth remembering on departure. */
     private void persistMemory() {
-        try {
-            memory.remember("sight", darkTheme ? "night" : "day");
-            memory.remember("window.width", String.valueOf(primaryStage.getWidth()));
-            memory.remember("window.height", String.valueOf(primaryStage.getHeight()));
-            String realm = realmPathField.getText();
-            if (realm != null && !realm.isBlank()) {
-                memory.remember("realm", realm);
-            }
-        } catch (IOException ex) {
-            // a knight departs even when his quill breaks
+        memory.remember("sight", darkTheme ? "night" : "day");
+        memory.remember("window.width", String.valueOf(primaryStage.getWidth()));
+        memory.remember("window.height", String.valueOf(primaryStage.getHeight()));
+        String realm = realmPathField.getText();
+        if (realm != null && !realm.isBlank()) {
+            memory.remember("realm", realm);
         }
     }
 
@@ -469,6 +464,15 @@ public class App extends Application {
         seekItem.setOnAction(e -> seekRealm());
         realmMenu.getItems().add(seekItem);
 
+        MenuItem bookmarkCurrentItem = new MenuItem("Bookmark Current Realm...");
+        bookmarkCurrentItem.setOnAction(e -> bookmarkCurrentRealm());
+        realmMenu.getItems().add(bookmarkCurrentItem);
+
+        MenuItem listBookmarksItem = new MenuItem("Bookmarked Realms...");
+        listBookmarksItem.setOnAction(e -> showBookmarkedRealmsDialog());
+        realmMenu.getItems().add(listBookmarksItem);
+        realmMenu.getItems().add(new SeparatorMenuItem());
+
         MenuItem musterItem = new MenuItem("Muster the Field");
         musterItem.setAccelerator(new KeyCodeCombination(KeyCode.R,
                 KeyCombination.CONTROL_DOWN));
@@ -545,11 +549,7 @@ public class App extends Application {
     private void setTheme(boolean dark) {
         darkTheme = dark;
         applyTheme();
-        try {
-            memory.remember("sight", dark ? "night" : "day");
-        } catch (IOException ignored) {
-            // the sight changes even if the quill fails
-        }
+        memory.remember("sight", dark ? "night" : "day");
     }
 
     private void applyTheme() {
@@ -587,11 +587,7 @@ public class App extends Application {
         task.setOnSucceeded(e -> {
             chronicle = candidate;
             realmPathField.setText(dir.getAbsolutePath());
-            try {
-                memory.remember("realm", dir.getAbsolutePath());
-            } catch (IOException ignored) {
-                // ride on even if the memory fails
-            }
+            memory.remember("realm", dir.getAbsolutePath());
             loadBanners();
             loadSigils();
             loadAllies();
@@ -601,6 +597,64 @@ public class App extends Application {
         task.setOnFailed(e -> showError("This land answers to no realm: "
                 + task.getException().getMessage()));
         new Thread(task, "realm-verify").start();
+    }
+
+    private void bookmarkCurrentRealm() {
+        if (chronicle == null) {
+            showError("No realm is currently open.");
+            return;
+        }
+        String path = chronicle.getRealmDir().getAbsolutePath();
+        String currentName = memory.recallBookmarkName(path).orElse(chronicle.getRealmDir().getName());
+        nameDialog("Bookmark Realm", "Name this realm:", "Realm Name:", currentName).ifPresent(name -> {
+            if (!name.isBlank()) {
+                memory.setBookmarkName(path, name);
+                statusBar.setText("Realm bookmarked as '" + name + "'.");
+            }
+        });
+    }
+
+    private void showBookmarkedRealmsDialog() {
+        java.util.Map<String, String> bookmarks = memory.recallAllBookmarks();
+        if (bookmarks.isEmpty()) {
+            showError("No realms have been bookmarked yet.");
+            return;
+        }
+
+        ListView<String> list = new ListView<>();
+        java.util.Map<String, String> displayToPath = new java.util.HashMap<>();
+        for (java.util.Map.Entry<String, String> entry : bookmarks.entrySet()) {
+            String display = entry.getValue() + " (" + entry.getKey() + ")";
+            list.getItems().add(display);
+            displayToPath.put(display, entry.getKey());
+        }
+
+        Dialog<String> dialog = new Dialog<>();
+        dialog.setTitle("Bookmarked Realms");
+        dialog.setHeaderText("Select a realm to open:");
+        dialog.getDialogPane().setContent(list);
+        dialog.getDialogPane().getButtonTypes().addAll(ButtonType.OK, ButtonType.CANCEL);
+
+        list.setOnMouseClicked(e -> {
+            if (e.getClickCount() == 2 && list.getSelectionModel().getSelectedItem() != null) {
+                dialog.setResult(list.getSelectionModel().getSelectedItem());
+                dialog.close();
+            }
+        });
+
+        dialog.setResultConverter(button -> {
+            if (button == ButtonType.OK) {
+                return list.getSelectionModel().getSelectedItem();
+            }
+            return null;
+        });
+
+        dialog.showAndWait().ifPresent(selected -> {
+            String path = displayToPath.get(selected);
+            if (path != null) {
+                openRealm(new File(path));
+            }
+        });
     }
 
     private void loadBanners() {
@@ -1395,7 +1449,11 @@ public class App extends Application {
     }
 
     private Optional<String> nameDialog(String title, String header, String label) {
-        TextInputDialog dialog = new TextInputDialog();
+        return nameDialog(title, header, label, "");
+    }
+
+    private Optional<String> nameDialog(String title, String header, String label, String defaultValue) {
+        TextInputDialog dialog = new TextInputDialog(defaultValue);
         dialog.setTitle("ForkKnight - " + title);
         dialog.setHeaderText(header);
         dialog.setContentText(label);

@@ -3,8 +3,6 @@ package forkknight.core;
 import org.junit.jupiter.api.Test;
 import org.junit.jupiter.api.io.TempDir;
 
-import java.io.IOException;
-import java.nio.file.Files;
 import java.nio.file.Path;
 import java.util.Map;
 import java.util.Optional;
@@ -17,7 +15,8 @@ class KnightMemoryTest {
     Path tempDir;
 
     private KnightMemory memory() {
-        return new KnightMemory(tempDir.resolve("nest").resolve("memory"));
+        String dbUrl = "jdbc:sqlite:" + tempDir.resolve("memory.db").toAbsolutePath();
+        return new KnightMemory(new KnightDatabase(dbUrl));
     }
 
     @Test
@@ -28,7 +27,7 @@ class KnightMemoryTest {
     }
 
     @Test
-    void rememberPersistsAcrossInstances() throws IOException {
+    void rememberPersistsAcrossInstances() {
         KnightMemory writer = memory();
         writer.remember("realm", "/tmp/some/realm");
         writer.remember("sight", "night");
@@ -40,7 +39,7 @@ class KnightMemoryTest {
     }
 
     @Test
-    void rememberPreservesOtherKeys() throws IOException {
+    void rememberPreservesOtherKeys() {
         KnightMemory memory = memory();
         memory.remember("a", "1");
         memory.remember("b", "2");
@@ -52,7 +51,7 @@ class KnightMemoryTest {
     }
 
     @Test
-    void forgetRemovesOnlyThatKey() throws IOException {
+    void forgetRemovesOnlyThatKey() {
         KnightMemory memory = memory();
         memory.remember("a", "1");
         memory.remember("b", "2");
@@ -64,7 +63,7 @@ class KnightMemoryTest {
     }
 
     @Test
-    void newlinesAndBackslashesSurviveRoundTrip() throws IOException {
+    void newlinesAndBackslashesSurviveRoundTrip() {
         KnightMemory memory = memory();
         memory.remember("tale", "line one\nline two\\end");
         assertEquals("line one\nline two\\end",
@@ -72,60 +71,7 @@ class KnightMemoryTest {
     }
 
     @Test
-    void commentsAndBlankLinesIgnored() throws IOException {
-        Path file = tempDir.resolve("memory");
-        Files.writeString(file, """
-                # a comment
-                
-                key=value
-                """);
-        KnightMemory memory = new KnightMemory(file);
-        Map<String, String> all = memory.recallAll();
-        assertEquals(1, all.size());
-        assertEquals("value", all.get("key"));
-    }
-
-    @Test
-    void scribbledLinesAreSkippedNotFatal() throws IOException {
-        Path file = tempDir.resolve("memory");
-        Files.writeString(file, """
-                good=1
-                this line has no equals sign
-                =emptyKey
-                also-good=2
-                """);
-        KnightMemory memory = new KnightMemory(file);
-        Map<String, String> all = memory.recallAll();
-        assertEquals(2, all.size());
-        assertEquals("1", all.get("good"));
-        assertEquals("2", all.get("also-good"));
-    }
-
-    @Test
-    void brokenFileReadsAsEmptyNotCrash() throws IOException {
-        Path file = tempDir.resolve("memory");
-        Files.writeString(file, "fine=1\n");
-        // Simulate a corrupt file: a directory blocking the read path
-        // is hard to stage portably, so an unreadable file suffices -
-        // but readAllLines on a file still works, so instead assert
-        // recallAll tolerates arbitrary bytes without throwing.
-        Files.write(file, new byte[]{0x00, 0x01, 0x02, 'k', '=', 'v'});
-        KnightMemory memory = new KnightMemory(file);
-        assertDoesNotThrow(memory::recallAll);
-    }
-
-    @Test
-    void writeAllReplacesEverything() throws IOException {
-        KnightMemory memory = memory();
-        memory.remember("old", "gone");
-        memory.writeAll(Map.of("new", "kept"));
-        Map<String, String> all = memory.recallAll();
-        assertEquals(1, all.size());
-        assertEquals("kept", all.get("new"));
-    }
-
-    @Test
-    void featNoteCanBeRememberedRecalledAndCleared() throws IOException {
+    void featNoteCanBeRememberedRecalledAndCleared() {
         KnightMemory memory = memory();
         String hash = "abc123456789";
         assertEquals(Optional.empty(), memory.recallNote(hash));
