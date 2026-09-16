@@ -7,6 +7,13 @@ package forkknight.core;
  */
 public record Banner(String name, boolean active, String tipHash) {
 
+    public String shortHash() {
+        if (tipHash == null || tipHash.isBlank()) {
+            return "";
+        }
+        return tipHash.substring(0, Math.min(7, tipHash.length()));
+    }
+
     @Override
     public String toString() {
         return name;

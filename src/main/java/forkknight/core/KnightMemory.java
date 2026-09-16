@@ -79,6 +79,26 @@ public final class KnightMemory {
         writeAll(memory);
     }
 
+    /** Remembers a note for a feat hash; passing null or blank forgets the note. */
+    public void rememberNote(String hash, String note) throws IOException {
+        if (hash == null || hash.isBlank()) {
+            return;
+        }
+        if (note == null || note.isBlank()) {
+            forget("note." + hash);
+        } else {
+            remember("note." + hash, note);
+        }
+    }
+
+    /** Recalls a feat note if present. */
+    public Optional<String> recallNote(String hash) {
+        if (hash == null || hash.isBlank()) {
+            return Optional.empty();
+        }
+        return recall("note." + hash);
+    }
+
     /** Forgets one key; missing keys are a no-op. */
     public void forget(String key) throws IOException {
         Map<String, String> memory = recallAll();

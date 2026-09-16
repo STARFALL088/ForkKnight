@@ -252,6 +252,49 @@ public class Chronicle {
         return command("mark").flags("--abbrev-ref", "HEAD").run().trim();
     }
 
+    /** Record representing divergence between two banners. */
+    public record Divergence(int ahead, int behind) {}
+
+    /** Banner along with its divergence relative to the raised banner. */
+    public record BannerStanding(Banner banner, int ahead, int behind) {}
+
+    /**
+     * Measures divergence between two banners: ahead is unique to bannerA,
+     * behind is unique to bannerB.
+     */
+    public Divergence tallyDivergence(String bannerA, String bannerB)
+            throws IOException, InterruptedException {
+        String out = command("lineage").flags("--left-right", "--count")
+                .target(bannerA + "..." + bannerB).run().trim();
+        String[] parts = out.split("\\s+");
+        if (parts.length < 2) {
+            return new Divergence(0, 0);
+        }
+        try {
+            int left = Integer.parseInt(parts[0]);
+            int right = Integer.parseInt(parts[1]);
+            return new Divergence(left, right);
+        } catch (NumberFormatException ex) {
+            return new Divergence(0, 0);
+        }
+    }
+
+    /** All banners with their divergence standings relative to the raised banner. */
+    public List<BannerStanding> bannerStandings() throws IOException, InterruptedException {
+        List<Banner> list = banners();
+        String active = activeBanner();
+        List<BannerStanding> standings = new ArrayList<>();
+        for (Banner banner : list) {
+            if (banner.active() || banner.name().equals(active)) {
+                standings.add(new BannerStanding(banner, 0, 0));
+            } else {
+                Divergence div = tallyDivergence(active, banner.name());
+                standings.add(new BannerStanding(banner, div.ahead(), div.behind()));
+            }
+        }
+        return standings;
+    }
+
     /**
      * Sigils of the realm ordered by the recency of the feat they mark
      * (newest first). Feats off the current trail sort last, then by name.

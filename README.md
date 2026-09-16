@@ -96,9 +96,9 @@ java --module-path /path/to/javafx-sdk-24.0.2/lib \
 ./gradlew test
 ```
 
-79 tests cover the Chronicle codex (surveys, tolls, muster, banners,
-sigils, Kamui, fusion, allies, re-seal), the Scryer (all scopes,
-prefixes, multi-word AND, recency/hero lenses), the Weave (lanes,
-forks, recycling, deep bloodlines), the Vault (LRU eviction, purge,
-capacity), the Chronicler (rankings, ties, empty trails) and the
-KnightMemory (round trips, escapes, corruption tolerance).
+81 tests cover the Chronicle codex (surveys, tolls, muster, banners,
+sigils, Kamui, fusion, allies, re-seal, divergence tallies), the Scryer
+(all scopes, prefixes, multi-word AND, recency/hero lenses), the Weave
+(lanes, forks, recycling, deep bloodlines), the Vault (LRU eviction,
+purge, capacity), the Chronicler (rankings, ties, empty trails) and the
+KnightMemory (round trips, escapes, corruption tolerance, feat notes).

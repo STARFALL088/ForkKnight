@@ -550,4 +550,28 @@ class ChronicleTest {
         Chronicle chronicle = initRealm();
         assertThrows(IOException.class, chronicle::newestFeat);
     }
+
+    @Test
+    void tallyDivergenceCountsAheadAndBehind() throws Exception {
+        Chronicle chronicle = initRealm();
+        Path realm = chronicle.getRealmDir().toPath();
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "base");
+        dragon(realm, "checkout", "-qb", "feature");
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "feature feat 1");
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "feature feat 2");
+        dragon(realm, "checkout", "-q", "main");
+        dragon(realm, "commit", "-q", "--allow-empty", "-m", "main feat 1");
+
+        Chronicle.Divergence div = chronicle.tallyDivergence("main", "feature");
+        assertEquals(1, div.ahead());
+        assertEquals(2, div.behind());
+
+        List<Chronicle.BannerStanding> standings = chronicle.bannerStandings();
+        assertEquals(2, standings.size());
+        Chronicle.BannerStanding featureStanding = standings.stream()
+                .filter(s -> s.banner().name().equals("feature"))
+                .findFirst().orElseThrow();
+        assertEquals(1, featureStanding.ahead());
+        assertEquals(2, featureStanding.behind());
+    }
 }

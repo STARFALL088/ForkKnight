@@ -122,6 +122,9 @@ public class App extends Application {
         Button raiseBannerBtn = new Button("Raise...");
         raiseBannerBtn.setDisable(true);
         raiseBannerBtn.setOnAction(e -> raiseBannerDialog());
+        Button bannersRollBtn = new Button("Roll...");
+        bannersRollBtn.setDisable(true);
+        bannersRollBtn.setOnAction(e -> showBannersRoll());
         Button marchBtn = new Button("March");
         marchBtn.setDisable(true);
         marchBtn.setOnAction(e -> marchToSelectedBanner());
@@ -134,6 +137,7 @@ public class App extends Application {
         bannerBox.disableProperty().addListener((obs, was, is) -> {
             boolean off = is;
             raiseBannerBtn.setDisable(off);
+            bannersRollBtn.setDisable(off);
             marchBtn.setDisable(off);
             fuseBtn.setDisable(off);
             fellBtn.setDisable(off);
@@ -182,7 +186,7 @@ public class App extends Application {
             emissaryBtn.setDisable(off);
         });
 
-        HBox bannerRow = new HBox(10, bannerLabel, bannerBox, raiseBannerBtn,
+        HBox bannerRow = new HBox(10, bannerLabel, bannerBox, raiseBannerBtn, bannersRollBtn,
                 marchBtn, fuseBtn, fellBtn,
                 new Separator(),
                 sigilLabel, sigilBox, pressSigilBtn, meltSigilBtn,
@@ -227,10 +231,13 @@ public class App extends Application {
         });
 
         TableColumn<Weave.Woven, String> taleCol = new TableColumn<>("Feat");
-        taleCol.setCellValueFactory(cell -> new SimpleStringProperty(
-                cell.getValue().feat().isFusion()
-                        ? cell.getValue().feat().summary() + "  \u2694 fusion"
-                        : cell.getValue().feat().summary()));
+        taleCol.setCellValueFactory(cell -> {
+            Feat feat = cell.getValue().feat();
+            boolean hasNote = memory != null && memory.recallNote(feat.hash()).isPresent();
+            String prefix = hasNote ? "\uD83D\uDCDC " : "";
+            String suffix = feat.isFusion() ? "  \u2694 fusion" : "";
+            return new SimpleStringProperty(prefix + feat.summary() + suffix);
+        });
         taleCol.setMinWidth(300);
         taleCol.setSortable(false);
 
@@ -275,6 +282,7 @@ public class App extends Application {
         scryRow.setPadding(new Insets(5, 10, 5, 10));
 
         talePane = new TalePane();
+        talePane.setMemory(memory, () -> chronicleTable.refresh());
 
         statusBar = new Label("Ready");
         statusBar.setPadding(new Insets(4, 10, 4, 10));
@@ -492,6 +500,12 @@ public class App extends Application {
                 KeyCombination.CONTROL_DOWN));
         councilItem.setOnAction(e -> summonCouncil());
         realmMenu.getItems().add(councilItem);
+
+        MenuItem rollItem = new MenuItem("Banners Roll...");
+        rollItem.setAccelerator(new KeyCodeCombination(KeyCode.B,
+                KeyCombination.CONTROL_DOWN));
+        rollItem.setOnAction(e -> showBannersRoll());
+        realmMenu.getItems().add(rollItem);
 
         MenuItem quitItem = new MenuItem("Depart");
         quitItem.setAccelerator(new KeyCodeCombination(KeyCode.Q,
@@ -847,6 +861,81 @@ public class App extends Application {
                 statusBar.setText("Fusion dispute left in place - resolve it, then muster again.");
             }
         });
+    }
+
+    /** Displays all banners in the hall along with their ahead/behind counts relative to HEAD. */
+    private void showBannersRoll() {
+        if (chronicle == null) {
+            showError("Seek a realm first.");
+            return;
+        }
+        statusBar.setText("Surveying the banners roll...");
+        Chronicle service = chronicle;
+        Task<List<Chronicle.BannerStanding>> task = new Task<>() {
+            @Override
+            protected List<Chronicle.BannerStanding> call() throws Exception {
+                return service.bannerStandings();
+            }
+        };
+        task.setOnSucceeded(e -> {
+            statusBar.setText("Banners roll ready.");
+            List<Chronicle.BannerStanding> standings = task.getValue();
+            showBannersRollDialog(standings);
+        });
+        task.setOnFailed(e -> showError("Could not read banners roll: " + task.getException().getMessage()));
+        startDaemon(task, "banners-roll");
+    }
+
+    private void showBannersRollDialog(List<Chronicle.BannerStanding> standings) {
+        Dialog<Void> dialog = new Dialog<>();
+        dialog.setTitle("ForkKnight - Banners Roll");
+        dialog.setHeaderText("The Hall of Banners & Campaign Divergence");
+
+        TableView<Chronicle.BannerStanding> table = new TableView<>();
+        table.setPrefWidth(550);
+        table.setPrefHeight(300);
+
+        TableColumn<Chronicle.BannerStanding, String> nameCol = new TableColumn<>("Banner");
+        nameCol.setCellValueFactory(cell -> new SimpleStringProperty(
+                (cell.getValue().banner().active() ? "* " : "  ") + cell.getValue().banner().name()));
+        nameCol.setMinWidth(150);
+
+        TableColumn<Chronicle.BannerStanding, String> markCol = new TableColumn<>("Frontier Mark");
+        markCol.setCellValueFactory(cell -> new SimpleStringProperty(
+                cell.getValue().banner().shortHash()));
+        markCol.setMinWidth(100);
+
+        TableColumn<Chronicle.BannerStanding, String> standingCol = new TableColumn<>("Standing vs Raised");
+        standingCol.setCellValueFactory(cell -> {
+            Chronicle.BannerStanding s = cell.getValue();
+            if (s.banner().active()) {
+                return new SimpleStringProperty("Raised (Sworn Frontier)");
+            }
+            return new SimpleStringProperty("+" + s.ahead() + " / -" + s.behind());
+        });
+        standingCol.setMinWidth(200);
+
+        table.getColumns().addAll(nameCol, markCol, standingCol);
+        table.setItems(FXCollections.observableArrayList(standings));
+        table.setColumnResizePolicy(TableView.CONSTRAINED_RESIZE_POLICY_ALL_COLUMNS);
+
+        ButtonType marchBtnType = new ButtonType("March to Banner", ButtonBar.ButtonData.OK_DONE);
+        ButtonType closeBtnType = new ButtonType("Close", ButtonBar.ButtonData.CANCEL_CLOSE);
+        dialog.getDialogPane().getButtonTypes().addAll(marchBtnType, closeBtnType);
+        dialog.getDialogPane().setContent(table);
+
+        dialog.setResultConverter(btn -> {
+            if (btn == marchBtnType) {
+                Chronicle.BannerStanding selected = table.getSelectionModel().getSelectedItem();
+                if (selected != null && !selected.banner().active()) {
+                    bannerBox.getSelectionModel().select(selected.banner().name());
+                    marchToSelectedBanner();
+                }
+            }
+            return null;
+        });
+
+        dialog.showAndWait();
     }
 
     private String activeBannerName() {

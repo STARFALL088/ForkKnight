@@ -123,4 +123,18 @@ class KnightMemoryTest {
         assertEquals(1, all.size());
         assertEquals("kept", all.get("new"));
     }
+
+    @Test
+    void featNoteCanBeRememberedRecalledAndCleared() throws IOException {
+        KnightMemory memory = memory();
+        String hash = "abc123456789";
+        assertEquals(Optional.empty(), memory.recallNote(hash));
+
+        memory.rememberNote(hash, "Important release feat!");
+        assertEquals("Important release feat!", memory.recallNote(hash).orElse(null));
+
+        // Clearing note forgets it.
+        memory.rememberNote(hash, "");
+        assertEquals(Optional.empty(), memory.recallNote(hash));
+    }
 }

@@ -31,6 +31,8 @@ public class TalePane {
     private final ListView<Dispatch> dispatchList = new ListView<>();
     private final TextArea recountArea = new TextArea();
     private final Label header = new Label();
+    private final Label noteLabel = new Label();
+    private final Button annotateBtn = new Button("Annotate...");
     private final ObservableList<Dispatch> dispatchData = FXCollections.observableArrayList();
 
     /** Monotonic ticket so stale background results are discarded. */
@@ -40,6 +42,13 @@ public class TalePane {
 
     private Chronicle currentChronicle;
     private String currentHash;
+    private forkknight.core.KnightMemory memory;
+    private Runnable onNoteChanged;
+
+    public void setMemory(forkknight.core.KnightMemory memory, Runnable onNoteChanged) {
+        this.memory = memory;
+        this.onNoteChanged = onNoteChanged;
+    }
 
     /** Selection listener lazily loads per-path recounts through the vault. */
     private final javafx.beans.value.ChangeListener<Dispatch> dispatchListener =
@@ -99,11 +108,18 @@ public class TalePane {
         header.setPadding(new Insets(4, 8, 4, 8));
         header.getStyleClass().add("commit-header");
 
+        noteLabel.setPadding(new Insets(2, 8, 2, 8));
+        noteLabel.setStyle("-fx-font-style: italic; -fx-text-fill: #e0af68;");
+        annotateBtn.setOnAction(e -> annotateDialog());
+        HBox noteRow = new HBox(10, noteLabel, annotateBtn);
+        noteRow.setAlignment(javafx.geometry.Pos.CENTER_LEFT);
+        noteRow.setPadding(new Insets(0, 8, 4, 8));
+
         SplitPane split = new SplitPane(dispatchList, recountArea);
         split.setDividerPosition(0, 0.35);
         HBox.setHgrow(split, Priority.ALWAYS);
 
-        VBox headerBox = new VBox(4, header, new Separator());
+        VBox headerBox = new VBox(4, header, noteRow, new Separator());
         BorderPane content = new BorderPane();
         content.setTop(headerBox);
         content.setCenter(split);
@@ -121,6 +137,42 @@ public class TalePane {
         dispatchData.clear();
         recountArea.clear();
         header.setText("");
+        noteLabel.setText("");
+        currentHash = null;
+    }
+
+    private void refreshNoteDisplay() {
+        if (currentHash == null || memory == null) {
+            noteLabel.setText("");
+            return;
+        }
+        String note = memory.recallNote(currentHash).orElse(null);
+        if (note == null || note.isBlank()) {
+            noteLabel.setText("No knight's note");
+        } else {
+            noteLabel.setText("\uD83D\uDCDC Note: " + note);
+        }
+    }
+
+    private void annotateDialog() {
+        if (currentHash == null || memory == null) {
+            return;
+        }
+        String currentNote = memory.recallNote(currentHash).orElse("");
+        TextInputDialog dialog = new TextInputDialog(currentNote);
+        dialog.setTitle("ForkKnight - Knight's Note");
+        dialog.setHeaderText("Annotate feat " + currentHash.substring(0, Math.min(7, currentHash.length())));
+        dialog.setContentText("Note:");
+        dialog.showAndWait().ifPresent(text -> {
+            try {
+                memory.rememberNote(currentHash, text.strip());
+                refreshNoteDisplay();
+                if (onNoteChanged != null) {
+                    onNoteChanged.run();
+                }
+            } catch (Exception ignored) {
+            }
+        });
     }
 
     /** Recounts the chosen feat: dispatch list + report of first path. */
@@ -131,6 +183,7 @@ public class TalePane {
         dispatchList.getSelectionModel().selectedItemProperty().removeListener(dispatchListener);
         String hash = feat.hash();
         header.setText(feat.shortHash() + " - " + feat.summary());
+        refreshNoteDisplay();
         dispatchData.clear();
         recountArea.clear();
         dispatchList.setPlaceholder(new Label("Loading..."));
