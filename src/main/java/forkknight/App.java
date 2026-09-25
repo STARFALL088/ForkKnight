@@ -6,6 +6,7 @@ import forkknight.core.Chronicle;
 import forkknight.core.KnightMemory;
 import forkknight.core.Dispatch;
 import forkknight.core.Feat;
+import forkknight.core.RealmSession;
 import forkknight.core.Scryer;
 import forkknight.core.Sigil;
 import forkknight.core.Weave;
@@ -33,6 +34,7 @@ import java.io.File;
 import java.io.IOException;
 import java.time.LocalDate;
 import java.time.format.DateTimeFormatter;
+import java.util.ArrayList;
 import java.util.List;
 import java.util.Optional;
 import java.util.function.Predicate;
@@ -57,6 +59,13 @@ public class App extends Application {
     };
 
     private Chronicle chronicle;
+    /** Every realm the knight has open, in the order they were taken. */
+    private final List<RealmSession> realms = new ArrayList<>();
+    /** The realm the whole app currently serves (null when none is open). */
+    private RealmSession activeRealm;
+    private ComboBox<RealmSession> realmPicker;
+    /** True while the banner box is set by the app, not by the knight. */
+    private boolean restoringBanner;
     private TableView<Weave.Woven> chronicleTable;
     private TextField realmPathField;
     private final ObservableList<Weave.Woven> chronicleData =
@@ -92,15 +101,20 @@ public class App extends Application {
         primaryStage.setTitle("ForkKnight - Scroll of the Realm");
         restoreSightAndBounds(primaryStage);
 
-        // ----- realm chooser row -----
+        // ----- realm chooser row: the open realms, and the active one's path -----
         Label realmLabel = new Label("Realm:");
+        realmPicker = new ComboBox<>();
+        realmPicker.setPromptText("No realm open");
+        realmPicker.setPrefWidth(190);
+        realmPicker.setCellFactory(list -> new RealmCell());
+        realmPicker.setButtonCell(new RealmCell());
+        realmPicker.setOnAction(e -> activateRealm(realmPicker.getValue()));
         realmPathField = new TextField();
         realmPathField.setPromptText("Choose a realm to serve");
         realmPathField.setEditable(false);
         Button chooseRealmBtn = new Button("Seek...");
         chooseRealmBtn.setOnAction(e -> seekRealm());
-        HBox realmBox = new HBox(10, realmLabel, realmPathField, chooseRealmBtn);
-        realmBox.setPadding(new Insets(10));
+        HBox realmBox = new HBox(10, realmLabel, realmPicker, realmPathField, chooseRealmBtn);
         HBox.setHgrow(realmPathField, javafx.scene.layout.Priority.ALWAYS);
 
         // ----- banner + sigil row -----
@@ -110,8 +124,14 @@ public class App extends Application {
         bannerBox.setDisable(true);
         bannerBox.setPrefWidth(150);
         bannerBox.setOnAction(e -> {
+            if (restoringBanner) {
+                return; // the app filled the box, the knight chose nothing
+            }
             String banner = bannerBox.getSelectionModel().getSelectedItem();
             if (banner != null && chronicle != null) {
+                if (activeRealm != null) {
+                    activeRealm.chooseBanner(banner);
+                }
                 surveyTrail(banner);
             }
         });
@@ -324,12 +344,65 @@ public class App extends Application {
         primaryStage.show();
 
         // The knight remembers where he rode last; on departure, he
-        // writes down the realm, the sight he favored and his position.
+        // writes down the open realms, the sight he favored and his place.
         primaryStage.setOnCloseRequest(e -> persistMemory());
-        String lastRealm = memory.recall("realm").orElse(null);
-        if (lastRealm != null && new File(lastRealm).isDirectory()) {
-            openRealm(new File(lastRealm));
+        reopenRememberedRealms();
+    }
+
+    /**
+     * Reopens every realm the knight had open (R2), then stands in the one
+     * he left standing in. Realms that vanished since are skipped; a realm
+     * that no longer answers simply stays closed.
+     */
+    private void reopenRememberedRealms() {
+        List<String> remembered = RealmSession.decodeRealms(memory.recall("realms").orElse(null));
+        if (remembered.isEmpty()) {
+            // Ledgers written before R2 only ever held the single realm.
+            String last = memory.recall("realm").orElse(null);
+            if (last != null) {
+                remembered = List.of(last);
+            }
         }
+        String activePath = memory.recall("realm").orElse(null);
+        List<File> dirs = new ArrayList<>();
+        for (String path : remembered) {
+            File dir = new File(path);
+            if (dir.isDirectory()) {
+                dirs.add(dir);
+            }
+        }
+        if (dirs.isEmpty()) {
+            return;
+        }
+        Task<List<RealmSession>> task = new Task<>() {
+            @Override
+            protected List<RealmSession> call() throws Exception {
+                List<RealmSession> opened = new ArrayList<>();
+                for (File dir : dirs) {
+                    try {
+                        Chronicle candidate = new Chronicle(dir);
+                        candidate.validateRealm();
+                        opened.add(new RealmSession(candidate));
+                    } catch (Exception vanished) {
+                        // The realm is gone (deleted, unmounted): leave it closed.
+                    }
+                }
+                return opened;
+            }
+        };
+        task.setOnSucceeded(e -> {
+            List<RealmSession> opened = task.getValue();
+            if (opened.isEmpty()) {
+                return;
+            }
+            realms.addAll(opened);
+            refreshRealmPicker();
+            RealmSession target = findByPath(activePath);
+            activateRealm(target != null ? target : opened.get(opened.size() - 1));
+        });
+        task.setOnFailed(e -> showError("The remembered realms could not be reopened: "
+                + task.getException().getMessage()));
+        startDaemon(task, "realm-restore");
     }
 
     /** Writes the last memory, then closes the ledger connection. */
@@ -480,6 +553,10 @@ public class App extends Application {
         MenuItem listBookmarksItem = new MenuItem("Bookmarked Realms...");
         listBookmarksItem.setOnAction(e -> showBookmarkedRealmsDialog());
         realmMenu.getItems().add(listBookmarksItem);
+
+        MenuItem closeRealmItem = new MenuItem("Close This Realm");
+        closeRealmItem.setOnAction(e -> closeActiveRealm());
+        realmMenu.getItems().add(closeRealmItem);
         realmMenu.getItems().add(new SeparatorMenuItem());
 
         MenuItem musterItem = new MenuItem("Muster the Field");
@@ -577,7 +654,17 @@ public class App extends Application {
         }
     }
 
+    /**
+     * Brings a realm into the open set (R2). A realm already open is simply
+     * stood in again - never reopened from disk.
+     */
     private void openRealm(File dir) {
+        RealmSession already = findByPath(dir.getAbsolutePath());
+        if (already != null) {
+            activateRealm(already);
+            statusBar.setText("Already open: " + displayFor(already));
+            return;
+        }
         Chronicle candidate = new Chronicle(dir);
         Task<Void> task = new Task<>() {
             @Override
@@ -587,18 +674,216 @@ public class App extends Application {
             }
         };
         task.setOnSucceeded(e -> {
-            chronicle = candidate;
-            realmPathField.setText(dir.getAbsolutePath());
-            memory.remember("realm", dir.getAbsolutePath());
-            loadBanners();
-            loadSigils();
-            loadAllies();
-            surveyTrail(null);
-            refreshKamuiButton();
+            RealmSession session = new RealmSession(candidate);
+            realms.add(session);
+            refreshRealmPicker();
+            activateRealm(session);
         });
         task.setOnFailed(e -> showError("This land answers to no realm: "
                 + task.getException().getMessage()));
         new Thread(task, "realm-verify").start();
+    }
+
+    /** Stands the whole app in the given realm, keeping every other one open. */
+    private void activateRealm(RealmSession session) {
+        if (session == null || session == activeRealm) {
+            return; // nothing to do, and the picker fires this when set
+        }
+        rememberViewState();
+
+        activeRealm = session;
+        chronicle = session.chronicle();
+        scryer = session.scryer();
+        realmPathField.setText(session.path());
+        realmPicker.setValue(session);   // re-enters, but the guard above stops it
+
+        loadBanners();
+        loadSigils();
+        loadAllies();
+        refreshKamuiButton();
+        if (session.surveyed()) {
+            // Paint from memory first - the switch costs no git, no wait...
+            renderTrail(session);
+            restoreSelection(session.selectedHash());
+            // ...then quietly confirm the trail still stands as remembered.
+            refreshTrailQuietly(session);
+        } else {
+            surveyTrail(session.banner());
+        }
+        if (fieldTab.isSelected()) {
+            musterTheField();
+        }
+        rememberOpenRealms();
+        statusBar.setText(displayFor(session) + " - " + session.path());
+    }
+
+    /** Closes the realm the knight stands in, keeping the rest open. */
+    private void closeActiveRealm() {
+        if (activeRealm == null) {
+            return;
+        }
+        rememberViewState();
+        int closed = realms.indexOf(activeRealm);
+        realms.remove(activeRealm);
+        activeRealm = null;
+        refreshRealmPicker();
+        if (realms.isEmpty()) {
+            clearRealmView();
+        } else {
+            activateRealm(realms.get(Math.min(closed, realms.size() - 1)));
+        }
+        rememberOpenRealms();
+    }
+
+    /** Returns the app to its no-realm state (the way it boots). */
+    private void clearRealmView() {
+        chronicle = null;
+        scryer = null;
+        activeRealm = null;
+        realmPicker.setValue(null);
+        realmPathField.setText("");
+        memory.forget("realm");
+        chronicleData.clear();
+        talePane.reset();
+        chronicleTable.setItems(chronicleData);
+        chronicleTable.setPlaceholder(new Label("Seek a realm to serve."));
+        bannerBox.getItems().clear();
+        bannerBox.setDisable(true);
+        sigilBox.getItems().clear();
+        sigilBox.setDisable(true);
+        allyBox.getItems().clear();
+        allyBox.setDisable(true);
+        fieldData.clear();
+        summonKamuiBtn.setDisable(true);
+        statusBar.setText("No realm is open.");
+    }
+
+    /** The state the knight left behind in the realm he is leaving. */
+    private void rememberViewState() {
+        if (activeRealm != null) {
+            activeRealm.selectFeat(selectedHashNow());
+        }
+    }
+
+    /** Draws a surveyed trail into the view, then puts the knight back. */
+    private void renderTrail(RealmSession session) {
+        chronicleData.setAll(session.weave().rows());
+        scryer = session.scryer();
+        refreshHeroLens();
+        applyScrying();
+        if (chronicleData.isEmpty()) {
+            chronicleTable.setPlaceholder(new Label("The chronicle is empty."));
+        } else {
+            chronicleTable.setPlaceholder(null);
+        }
+    }
+
+    /** Puts the selection (and the scroll) back where the knight left it. */
+    private void restoreSelection(String hash) {
+        if (hash == null) {
+            talePane.reset();
+            return;
+        }
+        for (int i = 0; i < chronicleTable.getItems().size(); i++) {
+            Weave.Woven row = chronicleTable.getItems().get(i);
+            if (hash.equals(row.feat().hash())) {
+                chronicleTable.getSelectionModel().select(i);
+                chronicleTable.scrollTo(i);
+                return;
+            }
+        }
+        talePane.reset();
+    }
+
+    /** The feat the knight is looking at right now, if any. */
+    private String selectedHashNow() {
+        Weave.Woven chosen = chronicleTable.getSelectionModel().getSelectedItem();
+        return chosen != null ? chosen.feat().hash() : null;
+    }
+
+    /**
+     * Re-swarms a cached realm in the background, so anything that changed
+     * while the knight was elsewhere lands without ever blanking the view.
+     * The selection rides along.
+     */
+    private void refreshTrailQuietly(RealmSession session) {
+        Chronicle service = session.chronicle();
+        String banner = session.banner();
+        Task<Survey> task = new Task<>() {
+            @Override
+            protected Survey call() throws Exception {
+                List<Feat> feats = service.surveyTrail(banner, Integer.MAX_VALUE);
+                return new Survey(Weave.of(feats), new Scryer(feats));
+            }
+        };
+        task.setOnSucceeded(e -> {
+            Survey result = task.getValue();
+            session.rememberTrail(result.weave(), result.scryer());
+            if (session != activeRealm) {
+                return;
+            }
+            String keep = selectedHashNow();
+            renderTrail(session);
+            restoreSelection(keep);
+        });
+        // A failed refresh keeps the cached view: better a slightly stale
+        // trail than an empty one with an error over it.
+        startDaemon(task, "trail-refresh");
+    }
+
+    private RealmSession findByPath(String path) {
+        if (path == null) {
+            return null;
+        }
+        String wanted = new File(path).getAbsolutePath();
+        for (RealmSession session : realms) {
+            if (session.path().equals(wanted)) {
+                return session;
+            }
+        }
+        return null;
+    }
+
+    private void refreshRealmPicker() {
+        RealmSession current = activeRealm;
+        realmPicker.getItems().setAll(realms);   // re-renders the cells
+        if (current != null) {
+            realmPicker.setValue(current);       // setAll may have shaken the value loose
+        }
+    }
+
+    /** The knight's name for a realm: its bookmark if it has one. */
+    private String displayFor(RealmSession session) {
+        return memory.recallBookmarkName(session.path()).orElseGet(session::toString);
+    }
+
+    /** The open set, and the one the knight stands in, written down. */
+    private void rememberOpenRealms() {
+        List<String> paths = new ArrayList<>();
+        for (RealmSession session : realms) {
+            paths.add(session.path());
+        }
+        memory.remember("realms", RealmSession.encodeRealms(paths));
+        if (activeRealm != null) {
+            memory.remember("realm", activeRealm.path());
+        } else {
+            memory.forget("realm");
+        }
+    }
+
+    /** A cell in the realm picker: the realm's name, its path beneath. */
+    private final class RealmCell extends javafx.scene.control.ListCell<RealmSession> {
+        @Override
+        protected void updateItem(RealmSession item, boolean empty) {
+            super.updateItem(item, empty);
+            if (empty || item == null) {
+                setText(null);
+                setTooltip(null);
+            } else {
+                setText(displayFor(item));
+                setTooltip(new javafx.scene.control.Tooltip(item.path()));
+            }
+        }
     }
 
     private void bookmarkCurrentRealm() {
@@ -611,6 +896,7 @@ public class App extends Application {
         nameDialog("Bookmark Realm", "Name this realm:", "Realm Name:", currentName).ifPresent(name -> {
             if (!name.isBlank()) {
                 memory.setBookmarkName(path, name);
+                refreshRealmPicker();   // the picker names realms by bookmark
                 statusBar.setText("Realm bookmarked as '" + name + "'.");
             }
         });
@@ -661,6 +947,7 @@ public class App extends Application {
 
     private void loadBanners() {
         Chronicle service = chronicle;
+        RealmSession session = activeRealm;
         Task<List<Banner>> task = new Task<>() {
             @Override
             protected List<Banner> call() throws Exception {
@@ -668,15 +955,28 @@ public class App extends Application {
             }
         };
         task.setOnSucceeded(e -> {
+            if (session != activeRealm) {
+                return; // the knight rode elsewhere while the banners loaded
+            }
             bannerBox.getItems().setAll(task.getValue().stream()
                     .map(Banner::name).toList());
             String active = task.getValue().stream()
                     .filter(Banner::active).findFirst()
                     .map(Banner::name).orElse(null);
-            if (active != null) {
-                bannerBox.getSelectionModel().select(active);
-            } else if (!bannerBox.getItems().isEmpty()) {
-                bannerBox.getSelectionModel().selectFirst();
+            String remembered = session != null ? session.banner() : null;
+            String wanted = remembered != null && bannerBox.getItems().contains(remembered)
+                    ? remembered
+                    : active;
+            // Fill the box without asking the knight to survey again.
+            restoringBanner = true;
+            try {
+                if (wanted != null) {
+                    bannerBox.getSelectionModel().select(wanted);
+                } else if (!bannerBox.getItems().isEmpty()) {
+                    bannerBox.getSelectionModel().selectFirst();
+                }
+            } finally {
+                restoringBanner = false;
             }
             bannerBox.setDisable(bannerBox.getItems().isEmpty());
         });
@@ -685,35 +985,45 @@ public class App extends Application {
     }
 
     private void surveyTrail(String banner) {
+        RealmSession session = activeRealm;
+        if (session != null && banner != null) {
+            session.chooseBanner(banner);
+        }
         chronicleData.clear();
         talePane.reset();
         chronicleTable.setPlaceholder(new Label("Unrolling the scroll..."));
         statusBar.setText("Surveying the trail...");
 
         Chronicle service = chronicle;
-        Task<Weave> task = new Task<>() {
+        Task<Survey> task = new Task<>() {
             @Override
-            protected Weave call() throws Exception {
+            protected Survey call() throws Exception {
                 List<Feat> feats = service.surveyTrail(banner, Integer.MAX_VALUE);
                 // Index the fresh trail for scrying; built on the worker
                 // thread so the UI never stalls on big realms.
-                scryer = new Scryer(feats);
-                return Weave.of(feats);
+                return new Survey(Weave.of(feats), new Scryer(feats));
             }
         };
         task.setOnSucceeded(e -> {
-            chronicleData.setAll(task.getValue().rows());
-            refreshHeroLens();
-            applyScrying();
-            if (chronicleData.isEmpty()) {
-                chronicleTable.setPlaceholder(new Label("The chronicle is empty."));
-            } else {
-                chronicleTable.setPlaceholder(null);
+            Survey result = task.getValue();
+            if (session != null) {
+                // Cache it in the realm it belongs to, even if the knight
+                // has since ridden on: the next visit costs no git.
+                session.rememberTrail(result.weave(), result.scryer());
             }
+            if (session == null || session != activeRealm) {
+                return;   // the knight rode elsewhere (or closed everything)
+            }
+            renderTrail(session);
+            restoreSelection(session.selectedHash());
         });
         task.setOnFailed(e -> showError("The survey failed: "
                 + task.getException().getMessage()));
         startDaemon(task, "trail-survey");
+    }
+
+    /** A trail and its scrying index, built together off the FX thread. */
+    private record Survey(Weave weave, Scryer scryer) {
     }
 
     // ------------------------------------------------------------------
@@ -1012,15 +1322,25 @@ public class App extends Application {
             return;
         }
         Chronicle service = chronicle;
+        RealmSession session = activeRealm;
         Task<List<Sigil>> task = new Task<>() {
             @Override
             protected List<Sigil> call() throws Exception {
                 return service.sigils();
             }
         };
-        task.setOnSucceeded(e -> sigilBox.getItems().setAll(task.getValue().stream()
-                .map(Sigil::name).toList()));
-        task.setOnFailed(e -> sigilBox.getItems().clear());
+        task.setOnSucceeded(e -> {
+            if (session != activeRealm) {
+                return; // another realm stands here now
+            }
+            sigilBox.getItems().setAll(task.getValue().stream()
+                    .map(Sigil::name).toList());
+        });
+        task.setOnFailed(e -> {
+            if (session == activeRealm) {
+                sigilBox.getItems().clear();
+            }
+        });
         startDaemon(task, "sigil-load");
     }
 
@@ -1132,6 +1452,7 @@ public class App extends Application {
             return;
         }
         Chronicle service = chronicle;
+        RealmSession session = activeRealm;
         Task<List<Chronicle.Ally>> task = new Task<>() {
             @Override
             protected List<Chronicle.Ally> call() throws Exception {
@@ -1139,6 +1460,9 @@ public class App extends Application {
             }
         };
         task.setOnSucceeded(e -> {
+            if (session != activeRealm) {
+                return; // another realm stands here now
+            }
             allyBox.getItems().setAll(task.getValue().stream()
                     .map(Chronicle.Ally::name).toList());
             if (!allyBox.getItems().isEmpty()) {
@@ -1146,7 +1470,11 @@ public class App extends Application {
             }
             allyBox.setDisable(allyBox.getItems().isEmpty());
         });
-        task.setOnFailed(e -> allyBox.setDisable(true));
+        task.setOnFailed(e -> {
+            if (session == activeRealm) {
+                allyBox.setDisable(true);
+            }
+        });
         startDaemon(task, "ally-load");
     }
 

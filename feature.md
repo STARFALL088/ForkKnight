@@ -128,6 +128,9 @@ opens the one chosen (double-click works too).
 
 **Test suite: 113 green**
 
+### R1 (immutable shortcuts) + R2 (multiple realms)
+`Shortcut` (4 tests) and `RealmSession` (6 tests): **Test suite: 123 green**
+
 ---
 
 ## Requirements (recorded before any code)
@@ -141,9 +144,10 @@ or later. Menus display accelerators as a read-only reminder of what
 the keys already do. If a shortcut is wrong it changes in the source,
 never at runtime.
 
-*Standing:* accelerators are set in code (`App.buildMenuBar`) and no
-rebinding surface exists. The requirement is to keep it that way - any
-future settings surface must treat shortcuts as display-only.
+*Standing:* delivered - `forkknight.Shortcut` is an immutable enum set
+in code and `ShortcutTest` fails if anyone adds a rebinding surface.
+The requirement is to keep it that way - any future settings surface
+must treat shortcuts as display-only.
 
 ### R2 - Support multiple realms (git repositories) at once
 The knight must be able to hold **several realms** and work in all of
@@ -152,11 +156,14 @@ sigils, fusion, herald, scrying, notes...) must operate on whichever
 realm is *active*, and moving between realms must not cost a full
 re-open from disk.
 
-*Current standing:* the app holds exactly one `Chronicle` behind a
-single realm path field, so this is a real change - a realm must
-become a first-class, selectable session rather than a global.
+*Standing:* delivered - a realm is now a first-class `RealmSession`
+(chronicle + banner + trail + view state), open realms sit in a realm
+picker, and the active realm + open set are remembered in the ledger
+(`realms` / `realm` settings) and restored on launch. Switching paints
+from memory (no git, no disk re-open) and then quietly re-surveys in
+the background so an externally changed realm never shows stale.
 
-*Acceptance sketch:*
+*Acceptance sketch (all met):*
 - several realms open at once, switched cheaply (no disk re-open)
 - each realm keeps its own raised banner, trail and view state
 - notes and bookmarks stay scoped per realm (they already key on path)
@@ -172,4 +179,4 @@ become a first-class, selectable session rather than a global.
 
 ---
 
-*Last updated: the Ledger landed - SQLite persistence and realm bookmarks.*
+*Last updated: R2 delivered - multiple realms open at once, switched from memory.*
