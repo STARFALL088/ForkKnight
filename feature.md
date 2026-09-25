@@ -131,6 +131,27 @@ opens the one chosen (double-click works too).
 ### R1 (immutable shortcuts) + R2 (multiple realms)
 `Shortcut` (4 tests) and `RealmSession` (6 tests): **Test suite: 123 green**
 
+### The Order of Knights (local accounts)
+Local profiles that never touch a network; signing in is optional -
+the Wanderer (guest) rides without one. The ledger is hardened first
+(`67017e2`): versioned migrations through `PRAGMA user_version`
+(v1 legacy -> v2 accounts + user-scoped tables -> v3 `app_state`),
+WAL, busy timeout, one reused synchronized connection
+(`KnightDbException`, `schemaVersion()` for tests). Accounts land
+next (`ba16ec3`): a `users` table where every legacy row is adopted
+by the `keeper` account; then passwords (`ae83921`): PBKDF2-HMAC-SHA256
+at 600k iterations (`pbkdf2-sha256$iters$salt$hash`,
+`MessageDigest.isEqual`), `AccountService` (sign up / sign in /
+switch / sign out / dismiss) and `AuthException`; who rides is
+remembered in `app_state.account.current` (`09ce669`). The Knights
+dialog (`16566f3`, Realm menu "Knights...") reads the seat
+("Who rides now"), joins new knights, signs in / switches (password
+required), signs out to the Wanderer, claims a locked ledger
+("Set Password...") and dismisses a knight. A changed seat swaps the
+whole workspace on close: the outgoing knight's open realms are
+written down first, then the incoming knight's sight, window and
+remembered realms return. **Test suite: 127 green**
+
 ---
 
 ## Requirements (recorded before any code)
@@ -179,4 +200,4 @@ the background so an externally changed realm never shows stale.
 
 ---
 
-*Last updated: R2 delivered - multiple realms open at once, switched from memory.*
+*Last updated: The Order of Knights - local seats, passwords, and a seat that follows the rider.*
