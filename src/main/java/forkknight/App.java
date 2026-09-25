@@ -21,9 +21,6 @@ import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
 import javafx.scene.control.*;
-import javafx.scene.input.KeyCode;
-import javafx.scene.input.KeyCodeCombination;
-import javafx.scene.input.KeyCombination;
 import javafx.scene.layout.BorderPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.StackPane;
@@ -472,8 +469,7 @@ public class App extends Application {
     private MenuBar buildMenuBar() {
         Menu realmMenu = new Menu("_Realm");
         MenuItem seekItem = new MenuItem("Seek Realm...");
-        seekItem.setAccelerator(new KeyCodeCombination(KeyCode.O,
-                KeyCombination.CONTROL_DOWN));
+        seekItem.setAccelerator(Shortcut.SEEK.keys());
         seekItem.setOnAction(e -> seekRealm());
         realmMenu.getItems().add(seekItem);
 
@@ -487,8 +483,7 @@ public class App extends Application {
         realmMenu.getItems().add(new SeparatorMenuItem());
 
         MenuItem musterItem = new MenuItem("Muster the Field");
-        musterItem.setAccelerator(new KeyCodeCombination(KeyCode.R,
-                KeyCombination.CONTROL_DOWN));
+        musterItem.setAccelerator(Shortcut.MUSTER.keys());
         musterItem.setOnAction(e -> {
             tabPane.getSelectionModel().select(fieldTab);
             musterTheField();
@@ -496,8 +491,7 @@ public class App extends Application {
         realmMenu.getItems().add(musterItem);
 
         MenuItem sealItem = new MenuItem("Seal the Vanguard...");
-        sealItem.setAccelerator(new KeyCodeCombination(KeyCode.N,
-                KeyCombination.CONTROL_DOWN));
+        sealItem.setAccelerator(Shortcut.SEAL.keys());
         sealItem.setOnAction(e -> {
             tabPane.getSelectionModel().select(fieldTab);
             sealVanguard();
@@ -505,7 +499,7 @@ public class App extends Application {
         realmMenu.getItems().add(sealItem);
 
         MenuItem rallyItem = new MenuItem("Rally the Allies");
-        rallyItem.setAccelerator(new KeyCodeCombination(KeyCode.F5));
+        rallyItem.setAccelerator(Shortcut.RALLY.keys());
         rallyItem.setOnAction(e -> {
             rallyAllies();
             surveyTrail(bannerBox.getSelectionModel().getSelectedItem());
@@ -513,20 +507,17 @@ public class App extends Application {
         realmMenu.getItems().add(rallyItem);
 
         MenuItem councilItem = new MenuItem("Summon the Council...");
-        councilItem.setAccelerator(new KeyCodeCombination(KeyCode.I,
-                KeyCombination.CONTROL_DOWN));
+        councilItem.setAccelerator(Shortcut.COUNCIL.keys());
         councilItem.setOnAction(e -> summonCouncil());
         realmMenu.getItems().add(councilItem);
 
         MenuItem rollItem = new MenuItem("Banners Roll...");
-        rollItem.setAccelerator(new KeyCodeCombination(KeyCode.B,
-                KeyCombination.CONTROL_DOWN));
+        rollItem.setAccelerator(Shortcut.ROLL.keys());
         rollItem.setOnAction(e -> showBannersRoll());
         realmMenu.getItems().add(rollItem);
 
         MenuItem quitItem = new MenuItem("Depart");
-        quitItem.setAccelerator(new KeyCodeCombination(KeyCode.Q,
-                KeyCombination.CONTROL_DOWN));
+        quitItem.setAccelerator(Shortcut.DEPART.keys());
         quitItem.setOnAction(e -> javafx.application.Platform.exit());
         realmMenu.getItems().addAll(new SeparatorMenuItem(), quitItem);
 
@@ -539,14 +530,12 @@ public class App extends Application {
         darkItem.setSelected(darkTheme);
         darkItem.setOnAction(e -> setTheme(true));
         lightItem.setOnAction(e -> setTheme(false));
-        lightItem.setAccelerator(new KeyCodeCombination(KeyCode.D,
-                KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN));
+        lightItem.setAccelerator(Shortcut.DAY_SIGHT.keys());
         viewMenu.getItems().addAll(darkItem, lightItem);
 
         viewMenu.getItems().add(new SeparatorMenuItem());
         MenuItem scryItem = new MenuItem("Peer into the Scryer...");
-        scryItem.setAccelerator(new KeyCodeCombination(KeyCode.F,
-                KeyCombination.CONTROL_DOWN));
+        scryItem.setAccelerator(Shortcut.SCRY.keys());
         scryItem.setOnAction(e -> {
             tabPane.getSelectionModel().select(scrollTab);
             scryField.requestFocus();
