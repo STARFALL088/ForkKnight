@@ -11,23 +11,49 @@ import java.util.Optional;
  * keeper - the one who adopted every row that predates the accounts.
  */
 public final class KnightMemory {
+    /** Ledger state key: the knight who was signed in when the app last left. */
+    private static final String CURRENT_ACCOUNT = "account.current";
+
     private final KnightDatabase db;
     private long currentUserId;
 
     public KnightMemory() {
-        this.db = new KnightDatabase();
-        this.currentUserId = defaultAccountId(db);
+        this(new KnightDatabase());
     }
 
     KnightMemory(KnightDatabase db) {
         this.db = db;
-        this.currentUserId = defaultAccountId(db);
+        this.currentUserId = restoreAccountId(db);
+    }
+
+    /**
+     * Who was signed in last time: read back from the ledger, or the keeper
+     * when nobody has been marked yet (and the keeper when the mark went
+     * stale - a dismissed knight does not haunt the launch).
+     */
+    private static long restoreAccountId(KnightDatabase db) {
+        Optional<String> saved = db.getGlobal(CURRENT_ACCOUNT);
+        if (saved.isPresent()) {
+            try {
+                long id = Long.parseLong(saved.get().trim());
+                if (db.findUserById(id).isPresent()) {
+                    return id;
+                }
+            } catch (NumberFormatException ignored) {
+                // An unreadable mark is no mark at all.
+            }
+        }
+        return defaultAccountId(db);
     }
 
     private static long defaultAccountId(KnightDatabase db) {
         return db.findUserByUsername("keeper")
             .map(Account::id)
             .orElseGet(() -> db.guestAccount().id());
+    }
+
+    private void rememberCurrentAccount() {
+        db.setGlobal(CURRENT_ACCOUNT, String.valueOf(currentUserId));
     }
 
     /** Internal: the ledger behind this memory, for the account services. */
@@ -47,16 +73,18 @@ public final class KnightMemory {
         return db.findUserById(currentUserId);
     }
 
-    /** Serves another knight's ledger from now on. */
+    /** Serves another knight's ledger from now on, and remembers him. */
     public void switchTo(long userId) {
         Account account = db.findUserById(userId)
             .orElseThrow(() -> new KnightDbException("No such knight: " + userId));
         currentUserId = account.id();
+        rememberCurrentAccount();
     }
 
-    /** Drops back to the passwordless wanderer. */
+    /** Drops back to the passwordless wanderer, and remembers that. */
     public void signOut() {
         currentUserId = db.guestAccount().id();
+        rememberCurrentAccount();
     }
 
     // -------------------- Settings --------------------

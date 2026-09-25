@@ -83,4 +83,61 @@ class KnightMemoryTest {
         memory.rememberNote(hash, "");
         assertEquals(Optional.empty(), memory.recallNote(hash));
     }
+
+    // -------------------- Who is signed in --------------------
+
+    @Test
+    void theSignedInKnightSurvivesALaunch() {
+        KnightMemory first = memory();
+        AccountService accounts = new AccountService(first, 10_000);
+        Account alice = accounts.signUp("alice", "Alice", "correct horse", "correct horse");
+        first.remember("sight", "day");
+        first.close();
+
+        // A fresh launch over the same ledger: same knight, same memory.
+        KnightMemory second = memory();
+        assertEquals(alice.id(), second.currentUserId());
+        assertEquals("alice", second.currentAccount().orElseThrow().username());
+        assertEquals("day", second.recall("sight").orElse(null));
+    }
+
+    @Test
+    void signingOutSurvivesALaunch() {
+        KnightMemory first = memory();
+        new AccountService(first, 10_000).signUp("alice", "Alice", "correct horse", "correct horse");
+        first.signOut();
+        first.close();
+
+        assertTrue(memory().currentAccount().orElseThrow().guest());
+    }
+
+    @Test
+    void aStaleOrUnreadableMarkDoesNotHauntTheLaunch() {
+        KnightMemory first = memory();
+        long keeper = first.currentUserId();
+
+        // A knight who no longer rides (deleted elsewhere)...
+        first.ledger().setGlobal("account.current", "999999");
+        assertEquals(keeper, memory().currentUserId());
+
+        // ...and a mark nobody could ever read both fall back to the keeper.
+        first.ledger().setGlobal("account.current", "not-a-number");
+        assertEquals(keeper, memory().currentUserId());
+    }
+
+    @Test
+    void switchingKnightsRemembersWhoRodeOff() {
+        KnightMemory first = memory();
+        AccountService accounts = new AccountService(first, 10_000);
+        Account alice = accounts.signUp("alice", "Alice", "correct horse", "correct horse");
+        Account bob = accounts.signUp("bob", "Bob", "another secret", "another secret");
+        assertNotEquals(alice.id(), bob.id());
+        first.close();
+
+        KnightMemory second = memory();
+        assertEquals(bob.id(), second.currentUserId());
+        second.switchTo(alice.id());
+        second.close();
+        assertEquals(alice.id(), memory().currentUserId());
+    }
 }

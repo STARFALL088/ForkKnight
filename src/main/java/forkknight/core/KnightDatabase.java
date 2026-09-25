@@ -82,11 +82,22 @@ public final class KnightDatabase {
                     + "realm_path TEXT NOT NULL, name TEXT NOT NULL, PRIMARY KEY (user_id, realm_path))",
                     "user_id, realm_path, name", "realm_path, name");
             }
+        },
+        // v3 - app_state: facts about the ledger itself, not about any one knight
+        conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                stmt.executeUpdate("CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+            }
         }
     );
 
     private static final String DEFAULT_URL =
         "jdbc:sqlite:" + System.getProperty("user.home") + "/.forkknight/forkknight.db";
+
+    /** The version a fully migrated ledger reports (tests assert against it). */
+    static int schemaVersion() {
+        return MIGRATIONS.size();
+    }
 
     private final String dbUrl;
     private final Object lock = new Object();
@@ -222,6 +233,41 @@ public final class KnightDatabase {
                 ps.executeUpdate();
             } catch (SQLException e) {
                 throw new KnightDbException("Could not dismiss the knight", e);
+            }
+        }
+    }
+
+    // -------------------- App state (not owned by any one knight) --------------------
+
+    public Optional<String> getGlobal(String key) {
+        synchronized (lock) {
+            ensureOpen();
+            String sql = "SELECT value FROM app_state WHERE key = ?";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, key);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return Optional.ofNullable(rs.getString("value"));
+                    }
+                }
+            } catch (SQLException e) {
+                throw new KnightDbException("Could not read ledger state " + key, e);
+            }
+            return Optional.empty();
+        }
+    }
+
+    public void setGlobal(String key, String value) {
+        synchronized (lock) {
+            ensureOpen();
+            String sql = "INSERT INTO app_state (key, value) VALUES (?, ?) "
+                + "ON CONFLICT(key) DO UPDATE SET value = excluded.value";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, key);
+                ps.setString(2, value);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new KnightDbException("Could not store ledger state " + key, e);
             }
         }
     }

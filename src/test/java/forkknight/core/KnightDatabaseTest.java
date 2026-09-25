@@ -97,7 +97,7 @@ class KnightDatabaseTest {
         first.close();
 
         int versionAfterFirst = userVersion(dbUrl);
-        assertEquals(2, versionAfterFirst);
+        assertEquals(KnightDatabase.schemaVersion(), versionAfterFirst);
 
         KnightDatabase second = new KnightDatabase(dbUrl);
         assertEquals("night", second.getSetting(me, "sight").orElse(null));
@@ -132,7 +132,7 @@ class KnightDatabaseTest {
         assertEquals("/old/realm", db.getSetting(keeper, "realm").orElse(null));
         assertEquals("kept", db.getNote(keeper, "deadbeef").orElse(null));
         assertEquals("OldRealm", db.getBookmarkName(keeper, "/old/realm").orElse(null));
-        assertEquals(2, userVersion(dbUrl));
+        assertEquals(KnightDatabase.schemaVersion(), userVersion(dbUrl));
 
         // The keeper was locked: no password rides with it.
         Account keeperAccount = db.findUserById(keeper).orElseThrow();
