@@ -1,5 +1,7 @@
 package forkknight;
 
+import forkknight.core.Account;
+import forkknight.core.AccountService;
 import forkknight.core.Banner;
 import forkknight.core.Chronicler;
 import forkknight.core.Chronicle;
@@ -64,6 +66,12 @@ public class App extends Application {
     /** The realm the whole app currently serves (null when none is open). */
     private RealmSession activeRealm;
     private ComboBox<RealmSession> realmPicker;
+    /** The order of knights (local accounts) behind the current seat. */
+    private AccountService accounts;
+    /** Menu readout of who rides now. */
+    private Label whoRidesLabel;
+    private RadioMenuItem nightSightItem;
+    private RadioMenuItem daySightItem;
     /** True while the banner box is set by the app, not by the knight. */
     private boolean restoringBanner;
     private TableView<Weave.Woven> chronicleTable;
@@ -98,6 +106,7 @@ public class App extends Application {
     public void start(Stage primaryStage) {
         this.primaryStage = primaryStage;
         memory = new KnightMemory();
+        accounts = new AccountService(memory);
         primaryStage.setTitle("ForkKnight - Scroll of the Realm");
         restoreSightAndBounds(primaryStage);
 
@@ -337,6 +346,7 @@ public class App extends Application {
         root.setTop(new VBox(buildMenuBar(), top));
         root.setCenter(tabPane);
         root.setBottom(statusBar);
+        updateAccountLabel();
 
         mainScene = new Scene(root, 1100, 750);
         primaryStage.setScene(mainScene);
@@ -454,6 +464,61 @@ public class App extends Application {
         }
     }
 
+    // ------------------------------------------------------------------
+    // The order of knights (local accounts)
+    // ------------------------------------------------------------------
+
+    /**
+     * Opens the knights dialog. The outgoing knight's seat is written down
+     * first; when someone else holds the seat afterwards, his own sight,
+     * window and open realms are brought back.
+     */
+    private void summonKnights() {
+        long before = memory.currentUserId();
+        rememberOpenRealms();
+        persistMemory();
+        new KnightsDialog(accounts).showAndWait();
+        updateAccountLabel();
+        if (memory.currentUserId() != before) {
+            applyKnightMemory();
+            restoreSeat();
+        }
+    }
+
+    /** The menu readout of who rides now. */
+    private void updateAccountLabel() {
+        Account who = memory.currentAccount().orElse(null);
+        if (who == null || who.guest()) {
+            whoRidesLabel.setText("Riding as: the Wanderer");
+        } else if (AccountService.locked(who)) {
+            whoRidesLabel.setText("Riding as: " + who.username() + " (locked ledger)");
+        } else {
+            whoRidesLabel.setText("Riding as: " + who.username());
+        }
+    }
+
+    /**
+     * The new knight's own memory takes over: his favored sight, his window
+     * and the realms named by his bookmarks. (The seat itself is restored
+     * by {@link #restoreSeat()}.)
+     */
+    private void applyKnightMemory() {
+        restoreSightAndBounds(primaryStage);
+        applyTheme();
+        nightSightItem.setSelected(darkTheme);
+        daySightItem.setSelected(!darkTheme);
+        refreshRealmPicker();
+    }
+
+    /** Hands the seat to the current knight: his own open realms return. */
+    private void restoreSeat() {
+        realms.clear();
+        activeRealm = null;
+        refreshRealmPicker();
+        blankRealmView();
+        reopenRememberedRealms();
+    }
+
     private Button pressSigilBtn;
     private Button meltSigilBtn;
 
@@ -541,6 +606,13 @@ public class App extends Application {
 
     private MenuBar buildMenuBar() {
         Menu realmMenu = new Menu("_Realm");
+
+        MenuItem knightsItem = new MenuItem("Knights...");
+        knightsItem.setOnAction(e -> summonKnights());
+        whoRidesLabel = new Label();
+        CustomMenuItem whoRidesItem = new CustomMenuItem(whoRidesLabel, false);
+        realmMenu.getItems().addAll(knightsItem, whoRidesItem, new SeparatorMenuItem());
+
         MenuItem seekItem = new MenuItem("Seek Realm...");
         seekItem.setAccelerator(Shortcut.SEEK.keys());
         seekItem.setOnAction(e -> seekRealm());
@@ -602,6 +674,8 @@ public class App extends Application {
         ToggleGroup themeGroup = new ToggleGroup();
         RadioMenuItem darkItem = new RadioMenuItem("Night Sight");
         RadioMenuItem lightItem = new RadioMenuItem("Day Sight");
+        nightSightItem = darkItem;
+        daySightItem = lightItem;
         darkItem.setToggleGroup(themeGroup);
         lightItem.setToggleGroup(themeGroup);
         darkItem.setSelected(darkTheme);
@@ -737,12 +811,20 @@ public class App extends Application {
 
     /** Returns the app to its no-realm state (the way it boots). */
     private void clearRealmView() {
+        memory.forget("realm");
+        blankRealmView();
+    }
+
+    /**
+     * The same empty view, without touching the memory: used when the seat
+     * is handed over, right before the new knight's realms are restored.
+     */
+    private void blankRealmView() {
         chronicle = null;
         scryer = null;
         activeRealm = null;
         realmPicker.setValue(null);
         realmPathField.setText("");
-        memory.forget("realm");
         chronicleData.clear();
         talePane.reset();
         chronicleTable.setItems(chronicleData);
