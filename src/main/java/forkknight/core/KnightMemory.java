@@ -6,72 +6,108 @@ import java.util.Optional;
 
 /**
  * Memory layer that forwards all persistence to {@link KnightDatabase}.
- * Provides settings, notes, and realm bookmark management.
+ * Provides settings, notes and realm bookmark management, all scoped to the
+ * account the knight is signed in as. Until he signs in, that account is the
+ * keeper - the one who adopted every row that predates the accounts.
  */
 public final class KnightMemory {
     private final KnightDatabase db;
+    private long currentUserId;
 
     public KnightMemory() {
         this.db = new KnightDatabase();
-        // Database schema is initialized lazily by KnightDatabase.
+        this.currentUserId = defaultAccountId(db);
     }
 
     KnightMemory(KnightDatabase db) {
         this.db = db;
+        this.currentUserId = defaultAccountId(db);
     }
 
-    /** Reads all settings from the database. */
+    private static long defaultAccountId(KnightDatabase db) {
+        return db.findUserByUsername("keeper")
+            .map(Account::id)
+            .orElseGet(() -> db.guestAccount().id());
+    }
+
+    // -------------------- Who is signed in --------------------
+
+    /** The id of the knight currently served by this memory. */
+    public long currentUserId() {
+        return currentUserId;
+    }
+
+    /** The knight currently served by this memory, if he still rides. */
+    public Optional<Account> currentAccount() {
+        return db.findUserById(currentUserId);
+    }
+
+    /** Serves another knight's ledger from now on. */
+    public void switchTo(long userId) {
+        Account account = db.findUserById(userId)
+            .orElseThrow(() -> new KnightDbException("No such knight: " + userId));
+        currentUserId = account.id();
+    }
+
+    /** Drops back to the passwordless wanderer. */
+    public void signOut() {
+        currentUserId = db.guestAccount().id();
+    }
+
+    // -------------------- Settings --------------------
+
+    /** Reads all settings of the signed-in knight. */
     public Map<String, String> recallAll() {
-        return new HashMap<>(db.getAllSettings());
+        return new HashMap<>(db.getAllSettings(currentUserId));
     }
 
     public Optional<String> recall(String key) {
-        return db.getSetting(key);
+        return db.getSetting(currentUserId, key);
     }
 
     public Optional<String> recall(String key, String fallback) {
-        return db.getSetting(key).or(() -> Optional.ofNullable(fallback));
+        return db.getSetting(currentUserId, key).or(() -> Optional.ofNullable(fallback));
     }
 
     /** Stores or updates a setting. */
     public void remember(String key, String value) {
-        db.setSetting(key, value == null ? "" : value);
+        db.setSetting(currentUserId, key, value == null ? "" : value);
     }
 
     /** Stores or deletes a note for a feat hash. */
     public void rememberNote(String hash, String note) {
         if (hash == null || hash.isBlank()) return;
         if (note == null || note.isBlank()) {
-            db.deleteNote(hash);
+            db.deleteNote(currentUserId, hash);
         } else {
-            db.setNote(hash, note);
+            db.setNote(currentUserId, hash, note);
         }
     }
 
     public Optional<String> recallNote(String hash) {
         if (hash == null || hash.isBlank()) return Optional.empty();
-        return db.getNote(hash);
+        return db.getNote(currentUserId, hash);
     }
 
     public void forget(String key) {
-        db.deleteSetting(key);
+        db.deleteSetting(currentUserId, key);
     }
 
     // Realm bookmark helpers -------------------------------------------------
     public Map<String, String> recallAllBookmarks() {
-        return db.getAllBookmarks();
+        return db.getAllBookmarks(currentUserId);
     }
 
     public Optional<String> recallBookmarkName(String realmPath) {
-        return db.getBookmarkName(realmPath);
+        return db.getBookmarkName(currentUserId, realmPath);
     }
 
     public void setBookmarkName(String realmPath, String name) {
-        db.setBookmark(realmPath, name);
+        db.setBookmark(currentUserId, realmPath, name);
     }
 
     public void forgetBookmark(String realmPath) {
-        db.deleteBookmark(realmPath);
+        db.deleteBookmark(currentUserId, realmPath);
     }
 
     /** Releases the shared ledger connection. */
