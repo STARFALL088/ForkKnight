@@ -126,7 +126,41 @@ schema created on first connection). Tables: `settings`, `notes`,
 and "Bookmarked Realms..." - the dialog lists bookmarked realms and
 opens the one chosen (double-click works too).
 
-**Test suite: 80 green**
+**Test suite: 113 green**
+
+---
+
+## Requirements (recorded before any code)
+
+Hard requirements, not ideas. They constrain what may be built.
+
+### R1 - Shortcuts are fixed and must never become editable
+Every keyboard shortcut the app ships is **immutable**: no rebinding
+UI, no settings panel for keys, no per-user shortcut overrides - now
+or later. Menus display accelerators as a read-only reminder of what
+the keys already do. If a shortcut is wrong it changes in the source,
+never at runtime.
+
+*Standing:* accelerators are set in code (`App.buildMenuBar`) and no
+rebinding surface exists. The requirement is to keep it that way - any
+future settings surface must treat shortcuts as display-only.
+
+### R2 - Support multiple realms (git repositories) at once
+The knight must be able to hold **several realms** and work in all of
+them. Every feature already built (survey, muster, seal, banners,
+sigils, fusion, herald, scrying, notes...) must operate on whichever
+realm is *active*, and moving between realms must not cost a full
+re-open from disk.
+
+*Current standing:* the app holds exactly one `Chronicle` behind a
+single realm path field, so this is a real change - a realm must
+become a first-class, selectable session rather than a global.
+
+*Acceptance sketch:*
+- several realms open at once, switched cheaply (no disk re-open)
+- each realm keeps its own raised banner, trail and view state
+- notes and bookmarks stay scoped per realm (they already key on path)
+- the open set of realms is restored on the next launch
 
 ---
 
