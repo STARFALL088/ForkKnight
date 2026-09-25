@@ -30,6 +30,11 @@ public final class KnightMemory {
             .orElseGet(() -> db.guestAccount().id());
     }
 
+    /** Internal: the ledger behind this memory, for the account services. */
+    KnightDatabase ledger() {
+        return db;
+    }
+
     // -------------------- Who is signed in --------------------
 
     /** The id of the knight currently served by this memory. */
