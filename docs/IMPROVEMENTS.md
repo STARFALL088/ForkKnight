@@ -112,7 +112,7 @@ Based on analysis of the ForkKnight codebase, here are suggestions for potential
 
 ### 2. Separation of Concerns Refinement
 - **Presentation layer**: Further refinement of separation between presentation and domain logic
-- **Service layer**: Consider introducing a service layer for business logic
+- **Service layer**: Consider extending the service layer - `AccountService` already owns accounts; more domain logic could move out of `App` the same way
 - **Data transfer objects**: Use DTOs between layers where appropriate to reduce coupling
 
 ### 3. State Management
@@ -161,10 +161,16 @@ Looking at the code analysis, here are some specific technical observations:
 
 Several former suggestions have shipped and are documented in
 FEATURES.md:
-- Keyboard shortcuts (Ctrl+O/N/R/F/I/Q, F5, Ctrl+Shift+D)
+- Keyboard shortcuts (Ctrl+O/N/R/B/F/I/Q, F5, Ctrl+Shift+D) - frozen as
+  the immutable, display-only `Shortcut` catalogue (R1)
 - Filtering by author and date range (the scrying lenses)
-- SQLite persistence (the Ledger: settings, notes, realm bookmarks)
+- SQLite persistence (the Ledger: settings, notes, realm bookmarks,
+  accounts and app state - versioned migrations, WAL, per-knight rows)
 - Window-size/theme/realm persistence (the Knight's Memory, now backed by the Ledger)
+- Multiple realms open at once (R2: `RealmSession`, the realm picker,
+  open set + active realm remembered per knight)
+- Local accounts (the Order of Knights: PBKDF2 passwords, the guest
+  Wanderer, a seat remembered across launches, the Knights dialog)
 - Operation history (partial): every realm action refreshes the trail
   and field, and the status bar narrates the running action
 - Amend support (Re-seal)

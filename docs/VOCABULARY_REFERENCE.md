@@ -35,6 +35,15 @@ This document provides a complete reference of ForkKnight's knightly vocabulary 
 | The Council | repository statistics | Leader boards of heroes, days and path heat |
 | Knight's Memory | settings persistence | Facade over the ledger (settings, notes, realm bookmarks) |
 | The Ledger | SQLite database | ~/.forkknight/forkknight.db - the realm's tables |
+| The Order of Knights | local accounts | The roster of local profiles (Realm -> Knights...); joining and signing in are optional |
+| Knight / the seat | signed-in user / account | Whoever is signed in - his sight, notes and bookmarks are the ones the app serves |
+| The Wanderer (guest) | guest account | The passwordless seat anybody rides without signing in (`guest`) |
+| Keeper of the Ledger | pre-accounts account | Auto-created during the accounts migration; adopted every legacy row and holds a *locked* ledger until claimed |
+| Who rides now / Riding as | current account | The dialog line and the Realm-menu readout naming the knight in the seat |
+| Claim a locked ledger | set the first password | Give a passwordless (locked) account its password - "Set Password..." without a current one |
+| Switch knights / take a seat | sign in / switch account | Handing the seat to another knight; always requires his password |
+| Dismiss a knight | delete account | Removing a knight from the ledger; his settings, notes and bookmarks fall with him |
+| Several realms at once | multiple repositories open | Each open realm keeps its own banner, trail and view state (`RealmSession`) |
 | Night/Day Sight | dark/light theme | Switching between UI themes |
 | Hero | author | The person who created a feat |
 | Banish | discard changes | Removing uncommitted changes |

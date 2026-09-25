@@ -68,18 +68,32 @@ This creates a clean separation where:
 6. **Weave** - DAG lane assignment for the commit graph column
 7. **Scryer** - Search index (trie + bigram inverted index) plus recency/hero lenses
 8. **Chronicler** - Realm statistics via bounded top-K min-heaps
-9. **KnightMemory** - Memory facade: settings, notes and realm bookmarks
-10. **KnightDatabase** - SQLite persistence (~/.forkknight/forkknight.db, JDBC)
-11. **Dispatch** - A single file change entry
+9. **KnightMemory** - Memory facade: settings, notes and realm bookmarks,
+   every call scoped to the signed-in knight
+10. **KnightDatabase** - SQLite persistence (~/.forkknight/forkknight.db, JDBC),
+    schema versioned through `PRAGMA user_version` (WAL, one reused connection,
+    failures wrapped in `KnightDbException`)
+11. **Account** / **AccountService** - a local knight (id, username,
+    display name, password hash, guest flag) and the service that signs
+    up / in / out, switches seats, changes passwords and dismisses;
+    every refusal is an `AuthException` with a UI-readable message
+12. **PasswordHasher** - PBKDF2-HMAC-SHA256 password hashing (see below)
+13. **RealmSession** - one open realm: its chronicle, raised banner,
+    cached trail (Weave + Scryer) and view state (R2)
+14. **Dispatch** - A single file change entry
 
 ### UI Layer
 
 1. **App** (`forkknight.App`) - Main JavaFX application: UI shell, menus,
-   keyboard shorts, The Field tab, Herald/Council/Kamui wiring
+   keyboard shorts, the realm picker, The Field tab, Herald/Council/Kamui
+   wiring, and the seat swap described below
 2. **TalePane** (`forkknight.ui`) - Feat details: dispatch list + per-path
    recounts cached through the Vault
-3. **SealDialog, CouncilDialog** (`forkknight`) - Commit message dialog and
-   the statistics council
+3. **SealDialog, CouncilDialog, KnightsDialog** (`forkknight`) - Commit
+   message dialog, statistics council, and the Order of Knights dialog
+   (sign in / switch / join / claim password / sign out / dismiss)
+4. **Shortcut** (`forkknight`) - The immutable keyboard catalogue the
+   menus read their accelerators from (R1: display-only, never rebindable)
 
 There is no separate git package: the rebrand folded the entire git CLI
 into the Chronicle codex, so the only place raw verbs exist is the
@@ -131,7 +145,47 @@ new Thread(loadChronicleTask).start();
 ```
 
 ### 4. Immutable Data Patterns
-Many domain objects appear to be immutable or have controlled mutability, making them safe for use in UI components and caching.
+Many domain objects appear to be immutable or have controlled mutability, making them safe for use in UI components and caching. `Shortcut` is the explicit case: an enum of nine `KeyCodeCombination`s built once at class init, with no setter of any kind - the guarantee behind requirement R1.
+
+### 5. Accounts, Scoping and the Seat Swap
+Accounts are local profiles in the ledger - no server and no network:
+
+- **`PasswordHasher`** (package-private in `forkknight.core`):
+  PBKDF2-HMAC-SHA256, 600,000 iterations, 16-byte random salt, stored as
+  `pbkdf2-sha256$iters$salt$hash` (both parts Base64). Iterations are read
+  back from the stored string, so raising the cost later rehashes on the
+  next sign-in instead of invalidating passwords; comparison is constant
+  time via `MessageDigest.isEqual`, and `matches()` returns `false` for
+  anything unrecognised (including the keeper's `locked$...` sentinel)
+  without ever throwing. Tests call a package-private constructor of
+  `AccountService` that injects a fast 10,000-iteration hasher, so the
+  suite does not spend minutes in PBKDF2.
+- **`AccountService`** is the only place sign up / sign in / switch /
+  sign out / change password / delete account logic lives; it refuses
+  with `AuthException` (message written for the knight). `guest` is a
+  reserved username - the passwordless Wanderer.
+- **Scoping**: `KnightMemory` is pointed at one account id at a time;
+  `switchTo` / `signOut` repoint it and write `app_state.account.current`
+  (global key/value, outside any knight's settings). All settings, notes
+  and bookmarks are addressed by `(user_id, key)` composite primary keys.
+- **The seat swap** (`App.summonKnights`): before showing `KnightsDialog`,
+  App writes down the outgoing knight's open realms and window/sight
+  (`rememberOpenRealms` + `persistMemory`). When the dialog closes with a
+  different id in the seat, App restores the incoming knight's sight and
+  window bounds (`applyKnightMemory`) and then hands him the seat
+  (`restoreSeat`: clear the realm list, blank the view, reopen his
+  remembered realms). The Wanderer's seat never blocks the git viewer.
+
+### 6. Several Realms at Once (RealmSession)
+`App` holds a `List<RealmSession>` plus an `activeRealm`; the toolbar's
+realm picker is a `ComboBox<RealmSession>` (sessions compare equal by
+path, so re-opening an open realm just activates it). Each session caches
+its own `Weave` and `Scryer`, so switching paints from memory and then
+calls a quiet background re-survey (`refreshTrailQuietly`) to pick up
+external changes without disturbing the selection. The open set and
+active path are persisted per knight under the settings keys `realms`
+(newline-separated) and `realm`, and restored on a background thread at
+launch.
 
 ## Documentation Summary
 

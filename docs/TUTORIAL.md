@@ -16,7 +16,7 @@ Let's imagine we're working on a simple web project called "realm-website".
 ### Scenario: You want to start tracking a new project with version control.
 
 **In ForkKnight:**
-1. Launch ForkKnight - the last realm reopens automatically if it still exists
+1. Launch ForkKnight - the realms you had open reopen automatically (standing in the one you left, if it still exists)
 2. Click "Seek..." (or Realm -> Seek Realm..., Ctrl+O)
 3. Navigate to and select your project directory
 4. ForkKnight verifies it is a realm and loads the chronicle
@@ -31,7 +31,7 @@ initialize it externally first (`git init`), then seek it.
 **What happens:**
 - ForkKnight verifies the directory belongs to the realm
 - The Scroll fills with the woven trail; banners, sigils and allies load
-- The realm path is remembered for the next launch
+- The open realms are remembered for the next launch
 
 ## Workflow 2: Basic Daily Work (Enlist, Seal, Emissary)
 
@@ -331,9 +331,11 @@ history is never rewritten backwards, only amended at the tip.
    double-click) to open it
 
 **What persists (the Ledger, SQLite at ~/.forkknight/forkknight.db):**
-- the last realm, window bounds and the favored sight
+- the open realms and the active one, window bounds and the favored
+  sight - each knight's own set
 - knight's notes on feats ("Annotate..." in the tale pane)
 - realm bookmarks
+- who rode last (Realm -> Knights... restores the seat on launch)
 
 **Underlying Git:** none - bookmarks are ForkKnight's own ledger, not
 part of the repository

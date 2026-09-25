@@ -151,17 +151,25 @@ path heat) without ever sorting the full data set.
 
 The old key=value vault (`~/.forkknight/memory`) has been replaced by an
 embedded SQLite database; `KnightMemory` forwards every call to
-`KnightDatabase` (see DATABASE.md):
+`KnightDatabase`, scoped to the signed-in knight (see DATABASE.md):
 
-- **Schema on first connection**: `settings`, `notes` and
-  `realm_bookmarks` tables are created with `CREATE TABLE IF NOT
-  EXISTS ...`
-- **Upserts as create-or-update**: `INSERT ... ON CONFLICT(key) DO
-  UPDATE SET value = excluded.value` collapses insert and update into
+- **Versioned migrations**: every schema change is a `Migration` in a
+  list, recorded with `PRAGMA user_version` and applied once, in order,
+  inside a single transaction (v1 legacy tables -> v2 accounts with
+  user-scoped composite keys and keeper adoption -> v3 `app_state`);
+  a failure rolls the whole run back and raises `KnightDbException`
+- **Upserts as create-or-update**: `INSERT ... ON CONFLICT(user_id, key)
+  DO UPDATE SET value = excluded.value` collapses insert and update into
   one prepared statement
-- **Connection per operation**: a fresh `DriverManager.getConnection`
-  in try-with-resources keeps the class safe for background tasks at
-  negligible cost (local SQLite files open cheaply)
+- **One reused connection, WAL**: a single connection per
+  `KnightDatabase`, guarded by an internal lock and opened with
+  `journal_mode=WAL`, `busy_timeout=5000`, `foreign_keys=ON` and
+  `synchronous=NORMAL`; `close()` releases it and the next call reopens
+  (and re-checks the schema version) on demand
+- **Per-knight scoping**: settings, notes and bookmarks are addressed by
+  `(user_id, key)` composite primary keys - still O(1) keyed access, but
+  two knights can hold the same key without colliding, and
+  `ON DELETE CASCADE` drops a dismissed knight's rows with him
 
 ## Performance Summary
 

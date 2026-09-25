@@ -16,7 +16,8 @@ Upon first launch, you'll be prompted to select a Git repository (Realm) to work
 
 The ForkKnight interface consists of several key areas:
 
-1. **Realm row** - the path of the opened realm, with a "Seek..." button
+1. **Realm row** - the realm picker (every open realm, one combo) with
+   the active realm's path, and a "Seek..." button
 2. **Banner row** - banner selector with Raise / March / Fuse / Fell,
    sigil selector with Press / Melt, and the Herald (allies combo with
    Rally / Recall / Emissary)
@@ -28,8 +29,9 @@ The ForkKnight interface consists of several key areas:
    Enlist All / Seal / Re-seal / Banish / Kamui / Summon
 5. **Status bar** - state and helpful messages
 
-On launch, ForkKnight reopens the last realm automatically (if it still
-exists); otherwise use Realm -> Seek Realm... (Ctrl+O) to choose one.
+On launch, ForkKnight reopens every realm you had open (standing in the
+one you left, if it still exists); otherwise use Realm -> Seek Realm...
+(Ctrl+O) to choose one.
 
 ## Core Operations
 
@@ -38,7 +40,19 @@ exists); otherwise use Realm -> Seek Realm... (Ctrl+O) to choose one.
 1. Click "Seek..." or use Realm -> Seek Realm... (Ctrl+O)
 2. Navigate to and select the directory containing your Git repository
 3. The application will load the Chronicle (history) of that Realm
-4. The last realm is remembered and reopened automatically next launch
+4. Every realm you had open is remembered and reopened automatically
+   next launch (each knight remembers his own set)
+
+### Keeping Several Realms Open
+
+- Opening a realm you already have open simply switches to it
+- The realm picker at the head of the toolbar lists every open realm;
+  choosing one repaints the whole workspace for it - banner, trail,
+  scrying and selection all return exactly as you left them
+- Switching is instant (drawn from memory), then the trail quietly
+  re-surveys in the background so outside changes are never missed
+- Realm -> Close This Realm shuts the active one; the picker offers the
+  neighbours, and closing the last one empties the workspace
 
 ### Surveying the Trail (Viewing Commit History)
 
@@ -189,12 +203,44 @@ gathering happens on a worker thread.
   press Open (or double-click) to march there
 - Bookmarks live in the ledger (SQLite), so they survive restarts
 
+## The Order of Knights (local accounts)
+
+Accounts are local profiles kept in the ledger - signing in is optional
+and nothing here ever touches a network. Ride as the Wanderer (the guest
+seat) and the git viewer works exactly as it always did.
+
+Realm -> Knights... opens **ForkKnight - The Order of Knights**, headed by
+"Who rides now: <seat>"; the Realm menu carries the same readout as
+"Riding as: <knight>".
+
+- **Join the order** - name (3-24 characters: letters, digits, dot, dash
+  or underscore; `guest` is reserved for the Wanderer), an optional
+  "known as" display name, then a password of
+  8+ characters entered twice; the new knight is signed in straight away
+- **Sign in / switch knights** - the sign-in form; a password is always
+  required to take another knight's seat
+- **Claim a locked ledger** - an account that predates passwords (the
+  `keeper`) holds a *locked* ledger: sign-in refuses until you use
+  "Set Password..." to give it its first password. For a locked ledger no
+  current password is asked - setting one *is* claiming it
+- **Change password** - "Set Password..." on a normal account asks for the
+  current password first; a refusal keeps the dialog open so you can fix
+  it in place
+- **Sign Out (to the Wanderer)** - back to the passwordless guest seat
+- **Dismiss...** - delete the current account behind a confirmation alert;
+  his settings, notes and bookmarks fall with him
+
+Closing the dialog with a changed seat swaps the whole workspace: the
+outgoing knight's open realms are written down first, then the incoming
+knight's sight, window bounds and remembered realms come back. The seat
+survives restarts - ForkKnight reopens as whoever rode last.
+
 ## Theme and Interface
 
 - Sight -> Night Sight / Day Sight (Ctrl+Shift+D) toggles the theme;
-  the choice is remembered
-- Window bounds, the last realm, notes and bookmarks persist across
-  sessions in the SQLite ledger (~/.forkknight/forkknight.db)
+  the choice is remembered per knight
+- Window bounds, the open realms, notes, bookmarks and who signed in all
+  persist across sessions in the SQLite ledger (~/.forkknight/forkknight.db)
 
 ## Keyboard Shortcuts
 
@@ -203,11 +249,16 @@ gathering happens on a worker thread.
 | Ctrl+O | Seek Realm |
 | Ctrl+R | Muster the Field (jump to The Field + refresh) |
 | Ctrl+N | Seal the Vanguard (commit dialog) |
+| Ctrl+B | Banners Roll (ahead/behind of every banner) |
 | F5 | Rally the Allies + re-survey the trail |
 | Ctrl+F | Peer into the Scryer (focus + select search box) |
 | Ctrl+Shift+D | Day Sight / Night Sight toggle |
 | Ctrl+I | Summon the Council (statistics) |
 | Ctrl+Q | Depart |
+
+These nine shortcuts are fixed for good (requirement R1): the menus show
+them as read-only reminders of what the keys already do, and ForkKnight
+never offers a way to rebind them.
 
 ## Tips for Effective Use
 

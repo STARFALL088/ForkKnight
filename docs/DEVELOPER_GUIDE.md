@@ -99,6 +99,9 @@ After running tests, you can find HTML reports at:
 
 # Run only Vault tests
 ./gradlew test --tests forkknight.core.VaultTest
+
+# Run only the account tests
+./gradlew test --tests forkknight.core.AccountServiceTest
 ```
 
 ## Project Structure Overview
@@ -117,7 +120,9 @@ ForkKnight/
 │   │   │   └── forkknight/                   # Main source code
 │   │   │       ├── App.java                  # JavaFX application: shell, menus, shorts
 │   │   │       ├── CouncilDialog.java        # Statistics dialog
+│   │   │       ├── KnightsDialog.java        # The Order of Knights (accounts) dialog
 │   │   │       ├── SealDialog.java           # Commit message dialog
+│   │   │       ├── Shortcut.java             # Immutable keyboard catalogue (R1)
 │   │   │       ├── core/                     # Domain model with knightly vocabulary
 │   │   │       │   ├── Chronicle.java        # Git command encapsulation (CODEX pattern)
 │   │   │       │   ├── Feat.java             # Commit representation (with parent hashes)
@@ -129,7 +134,13 @@ ForkKnight/
 │   │   │       │   ├── Vault.java            # LRU cache implementation
 │   │   │       │   ├── Chronicler.java       # Statistics via bounded top-K heaps
 │   │   │       │   ├── KnightMemory.java     # Memory facade (settings, notes, bookmarks)
-│   │   │       │   └── KnightDatabase.java   # SQLite persistence (JDBC)
+│   │   │       │   ├── KnightDatabase.java   # Versioned SQLite ledger (JDBC)
+│   │   │       │   ├── KnightDbException.java # Ledger failures, UI-readable
+│   │   │       │   ├── Account.java          # A local knight (record)
+│   │   │       │   ├── AccountService.java   # Sign up / in / out, switch, passwords
+│   │   │       │   ├── PasswordHasher.java   # PBKDF2-HMAC-SHA256
+│   │   │       │   ├── AuthException.java    # Refusals meant for the knight
+│   │   │       │   └── RealmSession.java     # One open realm + its view state (R2)
 │   │   │       └── ui/                       # User interface components
 │   │   │           └── TalePane.java         # Feat details + diff view
 │   │   └── resources/
@@ -137,19 +148,26 @@ ForkKnight/
 │   │           └── dark-theme.css            # Night Sight theme styling
 │   └── test/
 │       └── java/
-│           └── forkknight/core/              # Tests for all core classes
-│               ├── ChronicleTest.java        # 34 tests
-│               ├── ScryerTest.java          # 14 tests
-│               ├── WeaveTest.java           # 8 tests
-│               ├── ChroniclerTest.java      # 8 tests
-│               ├── KnightMemoryTest.java    # 6 tests
-│               ├── KnightDatabaseTest.java  # 3 tests
-│               └── VaultTest.java           # 7 tests
+│           └── forkknight/                   # UI-root tests + core tests
+│               ├── KnightsDialogTest.java     # 4 tests
+│               ├── ShortcutTest.java          # 4 tests
+│               └── core/                      # Tests for all core classes
+│                   ├── ChronicleTest.java     # 34 tests
+│                   ├── AccountServiceTest.java # 16 tests (fast 10k-iteration hasher)
+│                   ├── ScryerTest.java        # 14 tests
+│                   ├── KnightDatabaseTest.java # 10 tests (migrations, scoping)
+│                   ├── KnightMemoryTest.java  # 10 tests
+│                   ├── ChroniclerTest.java    # 8 tests
+│                   ├── WeaveTest.java         # 8 tests
+│                   ├── VaultTest.java         # 7 tests
+│                   ├── PasswordHasherTest.java # 6 tests
+│                   └── RealmSessionTest.java  # 6 tests
 ```
 
 **Note**: there is no `forkknight.git` package - the rebrand folded the
-entire git CLI into `Chronicle`'s private CODEX. All tests live under
-`forkknight.core` (80 total).
+entire git CLI into `Chronicle`'s private CODEX. The 127 tests live under
+the `forkknight` package: the two UI-root classes (`ShortcutTest`,
+`KnightsDialogTest`) and everything else in `forkknight.core`.
 
 ## Key Implementation Details
 
@@ -226,6 +244,49 @@ startDaemon(task, "trail-survey");   // daemon Thread under a name
 Result callbacks (setOnSucceeded/setOnFailed) fire on the JavaFX
 Application Thread, so UI updates are safe there without
 Platform.runLater.
+
+### The Ledger: versioned migrations, one connection
+`KnightDatabase` keeps a `List<Migration>` and records the applied
+version with `PRAGMA user_version` (v1 legacy schema -> v2 accounts +
+user-scoped tables -> v3 `app_state`). Pending steps run in a single
+transaction; a failure rolls back and raises `KnightDbException`. The one
+connection is reused and guarded by an internal lock, opened with
+`PRAGMA journal_mode=WAL`, `busy_timeout=5000`, `foreign_keys=ON`,
+`synchronous=NORMAL`. Tests point `new KnightDatabase(url)` at a
+`@TempDir` file and assert `schemaVersion()` matches `PRAGMA user_version`.
+
+### Accounts: PBKDF2 and the fast test hasher
+`PasswordHasher` derives `pbkdf2-sha256$iters$salt$hash` with
+PBKDF2-HMAC-SHA256 at 600,000 iterations (Base64 salt and hash, 16-byte
+salt, 256-bit key), compares with `MessageDigest.isEqual`, and never
+throws from `matches()`. `AccountService(KnightMemory)` is the public
+constructor (production cost); the package-private
+`AccountService(KnightMemory, int iterations)` lets tests inject a fast
+10,000-iteration hasher (the `FAST` constant in `AccountServiceTest`), so
+sign-up/sign-in coverage stays quick. All
+refusals are `AuthException`s; `AccountService.locked(account)` detects
+the keeper's `locked$...` sentinel (a locked ledger is claimed, not
+signed into).
+
+### The seat swap (who rides now)
+`App.summonKnights()` records the outgoing knight's open realms and
+sight/window (`rememberOpenRealms()` + `persistMemory()`) before showing
+`KnightsDialog`, then compares `memory.currentUserId()` before and after.
+If the seat changed it runs `applyKnightMemory()` (incoming knight's
+sight and window bounds) followed by `restoreSeat()` (clear realms, blank
+view, `reopenRememberedRealms()`). The seat itself lives in the global
+`app_state.account.current`, written by `KnightMemory.switchTo()` /
+`signOut()` and read back at construction.
+
+### RealmSession and Shortcut
+`App` keeps `List<RealmSession>` + `activeRealm` and a `ComboBox` picker;
+sessions are equal by path. Switching paints from the session's cached
+`Weave`/`Scryer` and re-surveys quietly in a daemon thread
+(`refreshTrailQuietly`). The open set is stored with
+`RealmSession.encodeRealms`/`decodeRealms` under the per-knight settings
+keys `realms` (one path per line) and `realm`. `Shortcut` is an enum of
+nine `KeyCodeCombination`s read by every menu accelerator;
+`ShortcutTest` pins the catalogue (requirement R1: never rebindable).
 
 ## Contributing Guidelines
 

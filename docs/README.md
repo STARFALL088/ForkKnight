@@ -5,6 +5,11 @@ for the AP Lab assignment. Every git concept is re-imagined in knightly
 (and occasionally anime) vocabulary - the raw "git" tongue is confined to
 a single codex inside `Chronicle` and never leaks into the UI.
 
+Several realms stay open at once, local accounts (the Order of Knights,
+optional - the Wanderer rides without signing in) decide whose sight and
+notes are shown, and the keyboard shortcuts are one immutable,
+display-only catalogue (`Shortcut`).
+
 ## The Realm's Vocabulary
 
 | ForkKnight | Common tongue |
@@ -46,11 +51,17 @@ a single codex inside `Chronicle` and never leaks into the UI.
   - `Vault` - O(1) LRU cache for diffs
   - `Chronicler` - realm statistics via bounded top-K heaps
   - `KnightMemory` - the knight's memory facade (settings, notes, bookmarks)
-  - `KnightDatabase` - SQLite vault at ~/.forkknight/forkknight.db (JDBC)
-- `src/main/java/forkknight/` - `App` (UI shell), `SealDialog`, `CouncilDialog`
+  - `KnightDatabase` - SQLite vault at ~/.forkknight/forkknight.db (JDBC),
+    schema versioned via `PRAGMA user_version`, WAL, one reused connection
+  - `AccountService`, `Account`, `PasswordHasher`, `AuthException` - the
+    Order of Knights: local accounts, PBKDF2 passwords, the guest Wanderer
+  - `RealmSession` - one open realm: its chronicle, banner and view state
+- `src/main/java/forkknight/` - `App` (UI shell), `SealDialog`,
+  `CouncilDialog`, `KnightsDialog` (accounts), `Shortcut` (immutable keys)
 - `src/main/java/forkknight/ui/` - `TalePane` (feat details + diff)
 - `src/main/resources/forkknight/dark-theme.css` - Night Sight theme
-- `src/test/java/forkknight/core/` - unit tests
+- `src/test/java/forkknight/` - unit tests (`core/` plus `ShortcutTest`,
+  `KnightsDialogTest`)
 
 ## Algorithms & Data Structures
 
@@ -67,9 +78,10 @@ a single codex inside `Chronicle` and never leaks into the UI.
 - **Chronicler**: bounded min-heap top-K selection (O(n log k)) powers
   the Council's leader boards (heroes, days, path heat).
 - **KnightMemory / KnightDatabase**: the memory facade now rides on an
-  embedded SQLite vault - JDBC prepared statements and
-  `ON CONFLICT ... DO UPDATE` upserts; the schema is created on the
-  first connection.
+  embedded SQLite vault - JDBC prepared statements,
+  `ON CONFLICT ... DO UPDATE` upserts, and a schema versioned through
+  `PRAGMA user_version` (legacy rows migrated, then adopted by the
+  `keeper` account), running in WAL mode over one reused connection.
 - **Chronicle**: NUL-separated porcelain parsing (rename-aware), a
   compile-time codex guard, and dual-stream subprocess draining with
   timeouts.
@@ -97,10 +109,17 @@ java --module-path /path/to/javafx-sdk-24.0.2/lib \
 
 The knight's memory rides on an embedded SQLite database at
 `~/.forkknight/forkknight.db` (driver `org.xerial:sqlite-jdbc`, no
-server to install). Three tables - `settings`, `notes`,
-`realm_bookmarks` - carry the last realm, theme, window bounds, feat
-annotations and realm bookmarks. Realm menu: "Bookmark Current
-Realm..." and "Bookmarked Realms..." (dialog opens the chosen realm).
+server to install). The schema is versioned through
+`PRAGMA user_version` - legacy data is migrated, then adopted by the
+`keeper` account - and runs in WAL mode over one reused connection.
+Tables: `users` (the Order of Knights: PBKDF2-hashed passwords, the
+guest Wanderer), `settings`, `notes` and `realm_bookmarks` (each
+scoped per knight with composite keys), and `app_state` (who rides
+now). The open realms live in each knight's `settings` (`realms`, the
+active `realm`). Realm menu: "Knights..." (local accounts:
+join, sign in, switch seats, claim a locked ledger), "Bookmark
+Current Realm..." and "Bookmarked Realms..." (dialog opens the chosen
+realm).
 
 ## Testing
 
@@ -108,11 +127,14 @@ Realm..." and "Bookmarked Realms..." (dialog opens the chosen realm).
 ./gradlew test
 ```
 
-80 tests cover the Chronicle codex (surveys, tolls, muster, banners,
+127 tests cover the Chronicle codex (surveys, tolls, muster, banners,
 sigils, Kamui, fusion, allies, re-seal, divergence tallies), the Scryer
 (all scopes, prefixes, multi-word AND, recency/hero lenses), the Weave
 (lanes, forks, recycling, deep bloodlines), the Vault (LRU eviction,
 purge, capacity), the Chronicler (rankings, ties, empty trails), the
-KnightDatabase (settings/notes/bookmark CRUD on a temp SQLite file) and
-the KnightMemory (settings and feat notes round trips through the
-database).
+ledger (migrations, settings/notes/bookmark CRUD, per-knight scoping
+on a temp SQLite file), the KnightMemory (settings and feat notes
+round trips), the immutable Shortcut catalogue, multi-realm sessions
+(RealmSession), and the accounts - PasswordHasher (PBKDF2 format and
+verification), AccountService (sign up / in / out / switch, locked
+ledgers, reserved guest) and KnightsDialog (the seat readouts).

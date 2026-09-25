@@ -106,7 +106,8 @@ every survey; the previous choice is re-selected when it still exists.
 
 ### The Knight's Memory (settings persistence)
 `KnightMemory` - now a thin facade over the Ledger (SQLite). Remembers:
-- the last realm (auto-reopened on launch when it still exists)
+- the realms you had open and the active one (the knight's own set,
+  restored on launch)
 - the favored sight (night/day theme, saved on switch)
 - window bounds (restored within sane minimums)
 - feat annotations (local notes per hash)
@@ -128,6 +129,86 @@ opens the one chosen (double-click works too).
 
 **Test suite: 80 green**
 
+### The Ledger, hardened (versioned migrations) (`67017e2`)
+`KnightDatabase` stops creating its schema ad hoc: every change is now an
+entry in a `MIGRATIONS` list, recorded with `PRAGMA user_version` and
+applied once, in order, inside one transaction (`schemaVersion()` is
+exposed for tests). v1 = the legacy three tables, v2 = accounts (below),
+v3 = `app_state`. The connection is opened once and reused - WAL journal,
+`busy_timeout=5000`, `foreign_keys=ON`, `synchronous=NORMAL` - with all
+access serialized on an internal lock, and every failure is wrapped in a
+`KnightDbException` with a message meant for the UI.
+
+### Accounts & passwords - the Order of Knights (`ba16ec3`, `ae83921`)
+A `users` table joins the ledger (`id`, case-insensitive unique
+`username`, `display_name`, `password_hash`, `is_guest`, `created_at`);
+in migration v2 every legacy settings/notes/bookmark row is adopted by
+the auto-created `keeper` account, so nothing is lost to the upgrade.
+Passwords are hashed by `PasswordHasher`: PBKDF2-HMAC-SHA256, 600,000
+iterations, stored as `pbkdf2-sha256$iters$salt$hash`, compared in
+constant time with `MessageDigest.isEqual`; `matches()` answers `false`
+for anything it does not recognise and never throws. `AccountService`
+offers sign up, sign in/switch, sign out, change password and delete
+account, refusing with an `AuthException` whose message is written for
+the knight to read. `guest` is reserved for the passwordless Wanderer,
+`AccountService.locked(account)` spots the keeper's `locked$...` sentinel
+hash, and tests inject a fast 10,000-iteration hasher through a
+package-private constructor so the suite stays quick.
+
+### The remembered seat (`09ce669`)
+The new global `app_state` table holds `account.current` - the id of the
+knight who was signed in when the app last left. `KnightMemory` reads it
+back on launch (falling back to `keeper`, then the Wanderer; a dismissed
+knight does not haunt the launch) and rewrites it on every switch or sign
+out, so the seat follows the rider across restarts.
+
+### R1 - One immutable shortcut catalogue (`56f00a2`)
+Every shortcut ForkKnight ships lives in the `forkknight.Shortcut` enum -
+built once at class init, all fields final, no setter of any kind:
+
+| Shortcut | Keys | Order |
+|---|---|---|
+| `SEEK` | Ctrl+O | Seek a realm |
+| `MUSTER` | Ctrl+R | Muster the field |
+| `SEAL` | Ctrl+N | Seal the vanguard |
+| `RALLY` | F5 | Rally the allies |
+| `COUNCIL` | Ctrl+I | Summon the council |
+| `ROLL` | Ctrl+B | Banners roll |
+| `DEPART` | Ctrl+Q | Depart |
+| `DAY_SIGHT` | Ctrl+Shift+D | Day Sight toggle |
+| `SCRY` | Ctrl+F | Peer into the scryer |
+
+Requirement: shortcuts are **display-only forever** - no rebinding UI, no
+per-user overrides, now or later; menus show the accelerators as a
+read-only reminder. `ShortcutTest` pins the catalogue and fails if anyone
+adds a rebinding surface.
+
+### R2 - Several realms at once (`fb82029`)
+A realm is now a first-class `RealmSession` (chronicle + banner + trail +
+view state per open realm). The toolbar grows a realm picker listing every
+open realm; each keeps its own raised banner, trail, scrying index and
+selected feat, so switching paints from memory - no git, no disk re-open -
+and then quietly re-surveys in the background (silent, selection kept).
+The open set and the active realm are persisted per knight in the
+settings keys `realms` (one path per line) and `realm` and restored on
+launch; a realm that vanished meanwhile simply stays closed.
+
+### The Knights Dialog (the seat, and who holds it) (`16566f3`)
+Realm -> "Knights..." (with a "Riding as: <knight>" readout beside it)
+opens **ForkKnight - The Order of Knights**: a "Who rides now: <seat>"
+line, a sign-in/switch form (a password is required to take another
+knight's seat), a join form (name 3-24 chars, optional "known as",
+password 8+ with repeat), "Sign Out (to the Wanderer)", "Set Password..."
+(which claims a locked ledger or changes the current password - failures
+keep the dialog open so the knight can correct it right there) and
+"Dismiss..." (delete the account behind a confirmation alert). Closing
+the dialog with a changed seat swaps the whole workspace: the outgoing
+knight's open realms are written down first, then the incoming knight's
+sight, window bounds and remembered realms are restored. The Wanderer
+rides without ever signing in, so the git viewer is never blocked.
+
+**Test suite: 127 green**
+
 ---
 
 ## Planned Next (ideas, in rough order)
@@ -138,4 +219,4 @@ opens the one chosen (double-click works too).
 
 ---
 
-*Last updated: the Ledger landed - SQLite persistence and realm bookmarks.*
+*Last updated: The Order of Knights - local seats, passwords, multi-realm sessions and an immutable shortcut catalogue.*
