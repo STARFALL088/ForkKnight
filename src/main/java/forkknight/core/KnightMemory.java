@@ -73,4 +73,9 @@ public final class KnightMemory {
     public void forgetBookmark(String realmPath) {
         db.deleteBookmark(realmPath);
     }
+
+    /** Releases the shared ledger connection. */
+    public void close() {
+        db.close();
+    }
 }

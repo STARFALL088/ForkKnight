@@ -335,6 +335,19 @@ public class App extends Application {
         }
     }
 
+    /** Writes the last memory, then closes the ledger connection. */
+    @Override
+    public void stop() {
+        try {
+            if (memory != null) {
+                persistMemory();
+                memory.close();
+            }
+        } catch (RuntimeException ignored) {
+            // Departing must never surface a ledger failure.
+        }
+    }
+
     // ------------------------------------------------------------------
     // The knight's memory (settings persistence)
     // ------------------------------------------------------------------
