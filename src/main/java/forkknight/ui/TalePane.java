@@ -1,13 +1,12 @@
 package forkknight.ui;
 
-import forkknight.core.Background;
+import forkknight.RealmTask;
 import forkknight.core.Chronicle;
 import forkknight.core.Dispatch;
 import forkknight.core.Feat;
 import forkknight.core.Vault;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.scene.Node;
 import javafx.scene.control.*;
@@ -69,7 +68,7 @@ public class TalePane {
                     return;
                 }
                 long ticket = loadTicket;
-                Task<String> recountTask = new Task<>() {
+                RealmTask<String> recountTask = new RealmTask<>("recount-path") {
                     @Override
                     protected String call() throws Exception {
                         return recountVault.acquire(key,
@@ -89,7 +88,7 @@ public class TalePane {
                     recountArea.setText(recountTask.getValue() == null
                             ? "" : recountTask.getValue());
                 });
-                startDaemon(recountTask, "recount-path");
+                recountTask.start();
             };
 
     public TalePane() {
@@ -189,10 +188,18 @@ public class TalePane {
         recountArea.clear();
         dispatchList.setPlaceholder(new Label("Loading..."));
 
-        Task<List<Dispatch>> tollTask = new Task<>() {
+        RealmTask<List<Dispatch>> tollTask = new RealmTask<>("toll-of") {
             @Override
             protected List<Dispatch> call() throws Exception {
                 return chronicle.tollOf(hash);
+            }
+
+            @Override
+            protected void failed() {
+                if (ticket != loadTicket) {
+                    return;
+                }
+                dispatchList.setPlaceholder(new Label("Failed to muster dispatches"));
             }
         };
         tollTask.setOnSucceeded(e -> {
@@ -207,17 +214,7 @@ public class TalePane {
                 dispatchList.getSelectionModel().selectFirst();
             }
         });
-        tollTask.setOnFailed(e -> {
-            if (ticket != loadTicket) {
-                return;
-            }
-            dispatchList.setPlaceholder(new Label("Failed to muster dispatches"));
-        });
-        startDaemon(tollTask, "toll-of");
-    }
-
-    private static void startDaemon(Task<?> task, String name) {
-        Background.shared().start(task, name);
+        tollTask.start();
     }
 
     /** List cell rendering a dispatch with a status badge and path. */

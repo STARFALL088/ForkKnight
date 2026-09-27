@@ -18,7 +18,6 @@ import javafx.application.Application;
 import javafx.beans.property.SimpleStringProperty;
 import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
-import javafx.concurrent.Task;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
 import javafx.scene.Scene;
@@ -385,7 +384,8 @@ public class App extends Application {
         if (dirs.isEmpty()) {
             return;
         }
-        Task<List<RealmSession>> task = new Task<>() {
+        RealmTask<List<RealmSession>> task = new RealmTask<>("realm-restore",
+                this::showError, "The remembered realms could not be reopened: ") {
             @Override
             protected List<RealmSession> call() throws Exception {
                 List<RealmSession> opened = new ArrayList<>();
@@ -411,9 +411,7 @@ public class App extends Application {
             RealmSession target = findByPath(activePath);
             activateRealm(target != null ? target : opened.get(opened.size() - 1));
         });
-        task.setOnFailed(e -> showError("The remembered realms could not be reopened: "
-                + task.getException().getMessage()));
-        startDaemon(task, "realm-restore");
+        task.start();
     }
 
     /** Writes the last memory, then closes the ledger connection. */
@@ -746,7 +744,8 @@ public class App extends Application {
             return;
         }
         Chronicle candidate = new Chronicle(dir);
-        Task<Void> task = new Task<>() {
+        RealmTask<Void> task = new RealmTask<>("realm-verify", this::showError,
+                "This land answers to no realm: ") {
             @Override
             protected Void call() throws Exception {
                 candidate.validateRealm();
@@ -759,9 +758,7 @@ public class App extends Application {
             refreshRealmPicker();
             activateRealm(session);
         });
-        task.setOnFailed(e -> showError("This land answers to no realm: "
-                + task.getException().getMessage()));
-        startDaemon(task, "realm-verify");
+        task.start();
     }
 
     /** Stands the whole app in the given realm, keeping every other one open. */
@@ -897,7 +894,7 @@ public class App extends Application {
     private void refreshTrailQuietly(RealmSession session) {
         Chronicle service = session.chronicle();
         String banner = session.banner();
-        Task<Survey> task = new Task<>() {
+        RealmTask<Survey> task = new RealmTask<>("trail-refresh") {
             @Override
             protected Survey call() throws Exception {
                 List<Feat> feats = service.surveyTrail(banner, Integer.MAX_VALUE);
@@ -916,7 +913,7 @@ public class App extends Application {
         });
         // A failed refresh keeps the cached view: better a slightly stale
         // trail than an empty one with an error over it.
-        startDaemon(task, "trail-refresh");
+        task.start();
     }
 
     private RealmSession findByPath(String path) {
@@ -1036,10 +1033,15 @@ public class App extends Application {
     private void loadBanners() {
         Chronicle service = chronicle;
         RealmSession session = activeRealm;
-        Task<List<Banner>> task = new Task<>() {
+        RealmTask<List<Banner>> task = new RealmTask<>("banner-load") {
             @Override
             protected List<Banner> call() throws Exception {
                 return service.banners();
+            }
+
+            @Override
+            protected void failed() {
+                bannerBox.setDisable(true);
             }
         };
         task.setOnSucceeded(e -> {
@@ -1068,8 +1070,7 @@ public class App extends Application {
             }
             bannerBox.setDisable(bannerBox.getItems().isEmpty());
         });
-        task.setOnFailed(e -> bannerBox.setDisable(true));
-        startDaemon(task, "banner-load");
+        task.start();
     }
 
     private void surveyTrail(String banner) {
@@ -1083,7 +1084,8 @@ public class App extends Application {
         statusBar.setText("Surveying the trail...");
 
         Chronicle service = chronicle;
-        Task<Survey> task = new Task<>() {
+        RealmTask<Survey> task = new RealmTask<>("trail-survey", this::showError,
+                "The survey failed: ") {
             @Override
             protected Survey call() throws Exception {
                 List<Feat> feats = service.surveyTrail(banner, Integer.MAX_VALUE);
@@ -1105,9 +1107,7 @@ public class App extends Application {
             renderTrail(session);
             restoreSelection(session.selectedHash());
         });
-        task.setOnFailed(e -> showError("The survey failed: "
-                + task.getException().getMessage()));
-        startDaemon(task, "trail-survey");
+        task.start();
     }
 
     /** A trail and its scrying index, built together off the FX thread. */
@@ -1325,7 +1325,9 @@ public class App extends Application {
         }
         statusBar.setText("Surveying the banners roll...");
         Chronicle service = chronicle;
-        Task<List<Chronicle.BannerStanding>> task = new Task<>() {
+        RealmTask<List<Chronicle.BannerStanding>> task =
+                new RealmTask<>("banners-roll", this::showError,
+                        "Could not read banners roll: ") {
             @Override
             protected List<Chronicle.BannerStanding> call() throws Exception {
                 return service.bannerStandings();
@@ -1336,8 +1338,7 @@ public class App extends Application {
             List<Chronicle.BannerStanding> standings = task.getValue();
             showBannersRollDialog(standings);
         });
-        task.setOnFailed(e -> showError("Could not read banners roll: " + task.getException().getMessage()));
-        startDaemon(task, "banners-roll");
+        task.start();
     }
 
     private void showBannersRollDialog(List<Chronicle.BannerStanding> standings) {
@@ -1411,10 +1412,17 @@ public class App extends Application {
         }
         Chronicle service = chronicle;
         RealmSession session = activeRealm;
-        Task<List<Sigil>> task = new Task<>() {
+        RealmTask<List<Sigil>> task = new RealmTask<>("sigil-load") {
             @Override
             protected List<Sigil> call() throws Exception {
                 return service.sigils();
+            }
+
+            @Override
+            protected void failed() {
+                if (session == activeRealm) {
+                    sigilBox.getItems().clear();
+                }
             }
         };
         task.setOnSucceeded(e -> {
@@ -1424,12 +1432,7 @@ public class App extends Application {
             sigilBox.getItems().setAll(task.getValue().stream()
                     .map(Sigil::name).toList());
         });
-        task.setOnFailed(e -> {
-            if (session == activeRealm) {
-                sigilBox.getItems().clear();
-            }
-        });
-        startDaemon(task, "sigil-load");
+        task.start();
     }
 
     /** Jumps the chronicle view to the feat carrying the sigil. */
@@ -1438,7 +1441,8 @@ public class App extends Application {
             return;
         }
         Chronicle service = chronicle;
-        Task<Feat> task = new Task<>() {
+        RealmTask<Feat> task = new RealmTask<>("sigil-reveal", this::showError,
+                "The sigil is unreadable: ") {
             @Override
             protected Feat call() throws Exception {
                 List<Sigil> sigils = service.sigils();
@@ -1460,9 +1464,7 @@ public class App extends Application {
                     }, () -> statusBar.setText("Sigil '" + name + "' marks "
                             + feat.shortHash() + ", off this trail"));
         });
-        task.setOnFailed(e -> showError("The sigil is unreadable: "
-                + task.getException().getMessage()));
-        startDaemon(task, "sigil-reveal");
+        task.start();
     }
 
     private void pressSigilDialog() {
@@ -1520,14 +1522,14 @@ public class App extends Application {
             return;
         }
         Chronicle service = chronicle;
-        Task<Boolean> task = new Task<>() {
+        RealmTask<Boolean> task = new RealmTask<>("kamui-check") {
             @Override
             protected Boolean call() throws Exception {
                 return service.kamuiHolds();
             }
         };
         task.setOnSucceeded(e -> summonKamuiBtn.setDisable(!task.getValue()));
-        startDaemon(task, "kamui-check");
+        task.start();
     }
 
     // ------------------------------------------------------------------
@@ -1541,10 +1543,17 @@ public class App extends Application {
         }
         Chronicle service = chronicle;
         RealmSession session = activeRealm;
-        Task<List<Chronicle.Ally>> task = new Task<>() {
+        RealmTask<List<Chronicle.Ally>> task = new RealmTask<>("ally-load") {
             @Override
             protected List<Chronicle.Ally> call() throws Exception {
                 return service.allies();
+            }
+
+            @Override
+            protected void failed() {
+                if (session == activeRealm) {
+                    allyBox.setDisable(true);
+                }
             }
         };
         task.setOnSucceeded(e -> {
@@ -1558,12 +1567,7 @@ public class App extends Application {
             }
             allyBox.setDisable(allyBox.getItems().isEmpty());
         });
-        task.setOnFailed(e -> {
-            if (session == activeRealm) {
-                allyBox.setDisable(true);
-            }
-        });
-        startDaemon(task, "ally-load");
+        task.start();
     }
 
     /** The selected ally name, or null to address all allies. */
@@ -1634,7 +1638,8 @@ public class App extends Application {
         }
         Chronicle service = chronicle;
         statusBar.setText("The chronicler is reading the realm...");
-        Task<Chronicler> task = new Task<>() {
+        RealmTask<Chronicler> task = new RealmTask<>("council-reading",
+                this::showError, "The chronicler could not read: ") {
             @Override
             protected Chronicler call() throws Exception {
                 List<Feat> feats = service.surveyTrail();
@@ -1653,9 +1658,7 @@ public class App extends Application {
             statusBar.setText("The council has spoken.");
             new CouncilDialog(task.getValue(), pathHeatForCouncil).showAndWait();
         });
-        task.setOnFailed(e -> showError("The chronicler could not read: "
-                + task.getException().getMessage()));
-        startDaemon(task, "council-reading");
+        task.start();
     }
 
     private List<Chronicler.PathHeat> pathHeatForCouncil = List.of();
@@ -1728,16 +1731,15 @@ public class App extends Application {
             return;
         }
         Chronicle service = chronicle;
-        Task<List<Dispatch>> task = new Task<>() {
+        RealmTask<List<Dispatch>> task = new RealmTask<>("field-muster",
+                this::showError, "The muster failed: ") {
             @Override
             protected List<Dispatch> call() throws Exception {
                 return service.muster();
             }
         };
         task.setOnSucceeded(e -> fieldData.setAll(task.getValue()));
-        task.setOnFailed(e -> showError("The muster failed: "
-                + task.getException().getMessage()));
-        startDaemon(task, "field-muster");
+        task.start();
     }
 
     private void enlistSelected(boolean enlist) {
@@ -1833,7 +1835,8 @@ public class App extends Application {
             return;
         }
         statusBar.setText(name + "...");
-        Task<Void> task = new Task<>() {
+        RealmTask<Void> task = new RealmTask<>("realm-action", this::showError,
+                name + " faltered: ") {
             @Override
             protected Void call() throws Exception {
                 action.run();
@@ -1849,9 +1852,7 @@ public class App extends Application {
                 onDone.run();
             }
         });
-        task.setOnFailed(e -> showError(name + " faltered: "
-                + task.getException().getMessage()));
-        startDaemon(task, "realm-action");
+        task.start();
     }
 
     @FunctionalInterface
@@ -1883,9 +1884,5 @@ public class App extends Application {
                 ButtonType.YES, ButtonType.NO);
         confirm.setHeaderText(title);
         confirm.showAndWait().filter(b -> b == ButtonType.YES).ifPresent(b -> onYes.run());
-    }
-
-    private static void startDaemon(Task<?> task, String name) {
-        Background.shared().start(task, name);
     }
 }

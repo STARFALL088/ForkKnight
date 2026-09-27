@@ -1,6 +1,5 @@
 package forkknight;
 
-import forkknight.core.Background;
 import forkknight.core.Beacon;
 import forkknight.core.Beacon.FarFeat;
 import forkknight.core.Beacon.FarReport;
@@ -21,7 +20,6 @@ import javafx.scene.control.TextField;
 import javafx.scene.layout.GridPane;
 import javafx.scene.layout.HBox;
 import javafx.scene.layout.VBox;
-import javafx.concurrent.Task;
 
 /**
  * The far call: reach across the wider realm and read what another world
@@ -123,26 +121,25 @@ public class BeaconDialog extends Dialog<Void> {
             refuse("Name both a holder and a realm to send the beacon.");
             return;
         }
-        Task<Fetched> task = new Task<>() {
+        RealmTask<Fetched> task = new RealmTask<>("far-call", this::refuse, "") {
             @Override
             protected Fetched call() throws Exception {
                 FarReport report = beacon.report(holder, realm);
                 List<FarFeat> newest = beacon.newestFeats(holder, realm);
                 return new Fetched(report, newest);
             }
+
+            @Override
+            protected String failureText(Throwable cause) {
+                if (cause instanceof InterruptedException) {
+                    return "The far call was cut off.";
+                }
+                return super.failureText(cause);
+            }
         };
         task.setOnSucceeded(e -> show(task.getValue()));
-        task.setOnFailed(e -> {
-            Throwable cause = task.getException();
-            if (cause instanceof InterruptedException) {
-                refuse("The far call was cut off.");
-            } else {
-                refuse(cause == null ? "The far call failed."
-                    : cause.getMessage());
-            }
-        });
         callBtn.setDisable(true);
-        startDaemon(task, "far-call");
+        task.start();
     }
 
     private void show(Fetched fetched) {
@@ -178,10 +175,6 @@ public class BeaconDialog extends Dialog<Void> {
         callBtn.setDisable(false);
         notice.setStyle("-fx-text-fill: #f7768e; -fx-font-weight: bold;");
         notice.setText(message == null ? "The far call failed." : message);
-    }
-
-    private static void startDaemon(Task<?> task, String name) {
-        Background.shared().start(task, name);
     }
 
     private record Fetched(FarReport report, List<FarFeat> feats) {
