@@ -2,6 +2,7 @@ package forkknight;
 
 import forkknight.core.Account;
 import forkknight.core.AccountService;
+import forkknight.core.Background;
 import forkknight.core.Banner;
 import forkknight.core.Chronicler;
 import forkknight.core.Chronicle;
@@ -426,6 +427,7 @@ public class App extends Application {
         } catch (RuntimeException ignored) {
             // Departing must never surface a ledger failure.
         }
+        Background.shared().shutdown();
     }
 
     // ------------------------------------------------------------------
@@ -759,7 +761,7 @@ public class App extends Application {
         });
         task.setOnFailed(e -> showError("This land answers to no realm: "
                 + task.getException().getMessage()));
-        new Thread(task, "realm-verify").start();
+        startDaemon(task, "realm-verify");
     }
 
     /** Stands the whole app in the given realm, keeping every other one open. */
@@ -1884,8 +1886,6 @@ public class App extends Application {
     }
 
     private static void startDaemon(Task<?> task, String name) {
-        Thread thread = new Thread(task, name);
-        thread.setDaemon(true);
-        thread.start();
+        Background.shared().start(task, name);
     }
 }

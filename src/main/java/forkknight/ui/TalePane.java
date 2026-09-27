@@ -1,5 +1,6 @@
 package forkknight.ui;
 
+import forkknight.core.Background;
 import forkknight.core.Chronicle;
 import forkknight.core.Dispatch;
 import forkknight.core.Feat;
@@ -216,9 +217,7 @@ public class TalePane {
     }
 
     private static void startDaemon(Task<?> task, String name) {
-        Thread thread = new Thread(task, name);
-        thread.setDaemon(true);
-        thread.start();
+        Background.shared().start(task, name);
     }
 
     /** List cell rendering a dispatch with a status badge and path. */

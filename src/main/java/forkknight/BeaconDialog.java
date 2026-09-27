@@ -1,5 +1,6 @@
 package forkknight;
 
+import forkknight.core.Background;
 import forkknight.core.Beacon;
 import forkknight.core.Beacon.FarFeat;
 import forkknight.core.Beacon.FarReport;
@@ -180,9 +181,7 @@ public class BeaconDialog extends Dialog<Void> {
     }
 
     private static void startDaemon(Task<?> task, String name) {
-        Thread thread = new Thread(task, name);
-        thread.setDaemon(true);
-        thread.start();
+        Background.shared().start(task, name);
     }
 
     private record Fetched(FarReport report, List<FarFeat> feats) {
