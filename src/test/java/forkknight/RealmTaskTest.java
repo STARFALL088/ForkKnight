@@ -7,8 +7,6 @@ import java.util.concurrent.CountDownLatch;
 import java.util.concurrent.TimeUnit;
 import java.util.concurrent.atomic.AtomicBoolean;
 import java.util.concurrent.atomic.AtomicReference;
-import javafx.application.Platform;
-import org.junit.jupiter.api.AfterAll;
 import org.junit.jupiter.api.BeforeAll;
 import org.junit.jupiter.api.Test;
 
@@ -17,8 +15,6 @@ import static org.junit.jupiter.api.Assumptions.assumeTrue;
 
 class RealmTaskTest {
 
-    private static boolean toolkit;
-
     /**
      * A Task fires its state events through Platform.runLater, so without
      * a live FX toolkit it dies before call() ever runs. On a machine with
@@ -26,26 +22,12 @@ class RealmTaskTest {
      */
     @BeforeAll
     static void wakeTheFxToolkit() {
-        try {
-            Platform.startup(() -> { });
-            toolkit = true;
-        } catch (IllegalStateException alreadyAwake) {
-            toolkit = true;
-        } catch (Throwable noDisplay) {
-            toolkit = false;
-        }
-    }
-
-    @AfterAll
-    static void restTheToolkit() {
-        if (toolkit) {
-            Platform.exit(); // the FX thread is no daemon; let it go
-        }
+        FxKit.awake();
     }
 
     @Test
     void carriesItsNameOntoAPoolDaemonWhenStarted() throws Exception {
-        assumeTrue(toolkit, "no display for the FX toolkit");
+        assumeTrue(FxKit.awake(), "no display for the FX toolkit");
         AtomicReference<String> seen = new AtomicReference<>();
         AtomicBoolean daemon = new AtomicBoolean();
         CountDownLatch done = new CountDownLatch(1);

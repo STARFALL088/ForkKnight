@@ -227,25 +227,25 @@ public class App extends Application {
         chronicleTable.getSelectionModel().setSelectionMode(SelectionMode.SINGLE);
 
         TableColumn<Weave.Woven, Weave.Woven> weaveCol = new TableColumn<>("Weave");
-        weaveCol.setMinWidth(80);
+        takeWindowShare(weaveCol, primaryStage.widthProperty(), 0.07);
         weaveCol.setSortable(false);
         weaveCol.setCellFactory(col -> new WeaveCell());
 
         TableColumn<Weave.Woven, String> markCol = new TableColumn<>("Mark");
-        markCol.setCellValueFactory(cell -> new SimpleStringProperty(cell.getValue().feat().shortHash()));
-        markCol.setMinWidth(80);
+        markCol.setCellValueFactory(cell ->                 new SimpleStringProperty(cell.getValue().feat().shortHash()));
+        takeWindowShare(markCol, primaryStage.widthProperty(), 0.07);
         markCol.setSortable(false);
 
         TableColumn<Weave.Woven, String> heroCol = new TableColumn<>("Hero");
         heroCol.setCellValueFactory(cell -> cell.getValue().feat().author() == null ? null
                 : new SimpleStringProperty(cell.getValue().feat().author()));
-        heroCol.setMinWidth(150);
+        takeWindowShare(heroCol, primaryStage.widthProperty(), 0.14);
         heroCol.setSortable(false);
 
         TableColumn<Weave.Woven, LocalDate> dayCol = new TableColumn<>("Day");
         dayCol.setCellValueFactory(cell ->
                 new javafx.beans.property.SimpleObjectProperty<>(cell.getValue().feat().date()));
-        dayCol.setMinWidth(100);
+        takeWindowShare(dayCol, primaryStage.widthProperty(), 0.09);
         dayCol.setSortable(false);
         dayCol.setCellFactory(col -> new TableCell<>() {
             @Override
@@ -264,7 +264,7 @@ public class App extends Application {
             String suffix = feat.isFusion() ? "  \u2694 fusion" : "";
             return new SimpleStringProperty(prefix + feat.summary() + suffix);
         });
-        taleCol.setMinWidth(300);
+        takeWindowShare(taleCol, primaryStage.widthProperty(), 0.30);
         taleCol.setSortable(false);
 
         chronicleTable.getColumns().addAll(weaveCol, markCol, heroCol, dayCol, taleCol);
@@ -350,6 +350,11 @@ public class App extends Application {
 
         mainScene = new Scene(root, 1100, 750);
         primaryStage.setScene(mainScene);
+        // The window may shrink, but not to a useless sliver: below these
+        // bounds the rows and the scroll's own columns could no longer
+        // show their faces.
+        primaryStage.setMinWidth(900);
+        primaryStage.setMinHeight(460);
         applyTheme();
         primaryStage.show();
 
@@ -357,6 +362,17 @@ public class App extends Application {
         // writes down the open realms, the sight he favored and his place.
         primaryStage.setOnCloseRequest(e -> persistMemory());
         reopenRememberedRealms();
+    }
+
+    /**
+     * Gives a table column a share of the window instead of a fixed
+     * floor: the columns shrink and grow together as the knight resizes,
+     * and none of them can crush the others off the edge.
+     */
+    static void takeWindowShare(TableColumn<?, ?> column,
+            javafx.beans.property.ReadOnlyDoubleProperty windowWidth,
+            double share) {
+        column.minWidthProperty().bind(windowWidth.multiply(share));
     }
 
     /**
@@ -1674,19 +1690,19 @@ public class App extends Application {
         TableColumn<Dispatch, String> stateCol = new TableColumn<>("Post");
         stateCol.setCellValueFactory(cell -> new SimpleStringProperty(
                 cell.getValue().staged() ? "Vanguard" : "Field"));
-        stateCol.setMinWidth(90);
+        takeWindowShare(stateCol, primaryStage.widthProperty(), 0.08);
 
         TableColumn<Dispatch, String> statusCol = new TableColumn<>("Word");
         statusCol.setCellValueFactory(cell -> new SimpleStringProperty(
                 cell.getValue().description()));
-        statusCol.setMinWidth(100);
+        takeWindowShare(statusCol, primaryStage.widthProperty(), 0.09);
 
         TableColumn<Dispatch, String> pathCol = new TableColumn<>("Path");
         pathCol.setCellValueFactory(cell -> new SimpleStringProperty(
                 cell.getValue().isRenaming()
                         ? cell.getValue().oldPath() + " \u2192 " + cell.getValue().path()
                         : cell.getValue().path()));
-        pathCol.setMinWidth(300);
+        takeWindowShare(pathCol, primaryStage.widthProperty(), 0.27);
 
         fieldTable.getColumns().addAll(stateCol, statusCol, pathCol);
         fieldTable.setItems(fieldData);
