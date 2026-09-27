@@ -665,6 +665,10 @@ public class App extends Application {
         rollItem.setOnAction(e -> showBannersRoll());
         realmMenu.getItems().add(rollItem);
 
+        MenuItem farCallItem = new MenuItem("Far Call to the Wider Realm...");
+        farCallItem.setOnAction(e -> new BeaconDialog().showAndWait());
+        realmMenu.getItems().add(farCallItem);
+
         MenuItem quitItem = new MenuItem("Depart");
         quitItem.setAccelerator(Shortcut.DEPART.keys());
         quitItem.setOnAction(e -> javafx.application.Platform.exit());
