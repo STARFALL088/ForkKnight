@@ -152,6 +152,49 @@ whole workspace on close: the outgoing knight's open realms are
 written down first, then the incoming knight's sight, window and
 remembered realms return. **Test suite: 127 green**
 
+### The Far Call (HTTP + JSON, the wider realm)
+The knight now reaches past git itself - a REST call across the
+network, with every response read as JSON:
+- `core/Json.java` - a hand-rolled RFC 8259 reader: objects, arrays,
+  string escapes (incl. `\uXXXX`), reals, literals, a 64-level depth
+  guard, trailing rubbish refused; documents become plain maps/lists
+  with typed helpers that refuse the wrong shape by name
+- `core/HttpGateway` (an interface) + `JdkHttpGateway` - JDK
+  `java.net.http.HttpClient`, 5s connect / 10s read timeouts, a
+  User-Agent, and any non-2xx refused as an `IOException`; the
+  transport hides behind the interface so parsing is tested with
+  canned answers and the gateway itself against a loopback server
+- `core/Beacon` - GitHub-style REST: a remote realm's report
+  (`/repos`) and its ten newest feats (`/commits`); owner/realm names
+  are validated so nothing odd can ride into the URL
+- `BeaconDialog` (Realm menu "Far Call to the Wider Realm...") - the
+  request rides a background `RealmTask`, so the FX thread never waits
+  on the network, and failures land back in the dialog's notice
+
+### The Shared Stable + RealmTask (concurrency, done properly)
+- `core/Background` - one shared cached pool of named daemon threads
+  behind every background job; a job's thread wears the job's own name
+  while it runs; Depart (`App.stop()`) shuts the pool down
+- `RealmTask<T>` (abstract, `extends Task<T>`) - the single shape of
+  all 17 background jobs: it carries the pool name, starts itself, and
+  handles every failure in one voice (a reporter chosen at
+  construction, prefixed with that site's words; hooks for stranger
+  failures). The three duplicated `startDaemon` helpers are gone.
+
+### Responsive Window
+Scroll and Field columns take fixed shares of the window
+(`takeWindowShare`, minimums bound to `primaryStage.widthProperty()`)
+instead of hard pixel floors - columns shrink and grow together - and
+the stage refuses to shrink below 900x460, where its rows could no
+longer show their faces.
+
+### Provenance note
+The ForkKnight idea was submitted on 2026-09-06; the first commits
+reached the repository on 2026-09-09/10 and development continued from
+there. The history carries honest dates - nothing was backdated.
+
+**Test suite: 152 green**
+
 ---
 
 ## Requirements (recorded before any code)
@@ -200,4 +243,4 @@ the background so an externally changed realm never shows stale.
 
 ---
 
-*Last updated: The Order of Knights - local seats, passwords, and a seat that follows the rider.*
+*Last updated: The Far Call - HTTP + JSON, one shared thread pool, RealmTask, and a window that rides its own width.*

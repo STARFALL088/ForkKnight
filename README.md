@@ -5,6 +5,10 @@ for the AP Lab assignment. Every git concept is re-imagined in knightly
 (and occasionally anime) vocabulary - the raw "git" tongue is confined to
 a single codex inside `Chronicle` and never leaks into the UI.
 
+*Origins: the idea was submitted on 2026-09-06, the first commits were
+pushed on 2026-09-09/10, and development continued from there; the
+history keeps its honest dates.*
+
 ## The Realm's Vocabulary
 
 | ForkKnight | Common tongue |
@@ -35,6 +39,7 @@ a single codex inside `Chronicle` and never leaks into the UI.
 | Hero | author |
 | Banish | discard changes |
 | Vanquish | delete untracked file |
+| Far Call to the Wider Realm | HTTP GET to a REST API (JSON) |
 
 ## Project Structure
 
@@ -51,8 +56,16 @@ a single codex inside `Chronicle` and never leaks into the UI.
   - `AccountService`, `Account`, `PasswordHasher`, `AuthException` - the
     Order of Knights: local accounts, PBKDF2 passwords, the guest Wanderer
   - `RealmSession` - one open realm: its chronicle, banner and view state
+  - `Json` - a hand-rolled RFC 8259 JSON reader (escapes, reals, depth
+    guard, typed helpers)
+  - `HttpGateway` / `JdkHttpGateway` / `Beacon` - HTTP GET behind an
+    interface + a GitHub-style REST client (report + newest feats)
+  - `Background` - the shared cached pool of named daemon threads every
+    background job rides; shut down when the app departs
 - `src/main/java/forkknight/` - `App` (UI shell), `SealDialog`,
-  `CouncilDialog`, `KnightsDialog` (accounts), `Shortcut` (immutable keys)
+  `CouncilDialog`, `KnightsDialog` (accounts), `Shortcut` (immutable
+  keys), `BeaconDialog` (the far call), `RealmTask` (abstract
+  background job: pool name + one-voiced failure reporting)
 - `src/main/java/forkknight/ui/` - `TalePane` (feat details + diff)
 - `src/main/resources/forkknight/dark-theme.css` - Night Sight theme
 - `src/test/java/forkknight/core/` - unit tests
@@ -120,7 +133,7 @@ seats, claim a locked ledger), "Bookmark Current Realm..." and
 ./gradlew test
 ```
 
-127 tests cover the Chronicle codex (surveys, tolls, muster, banners,
+152 tests cover the Chronicle codex (surveys, tolls, muster, banners,
 sigils, Kamui, fusion, allies, re-seal, divergence tallies), the Scryer
 (all scopes, prefixes, multi-word AND, recency/hero lenses), the Weave
 (lanes, forks, recycling, deep bloodlines), the Vault (LRU eviction,
@@ -128,6 +141,11 @@ purge, capacity), the Chronicler (rankings, ties, empty trails), the
 ledger (migrations, settings/notes/bookmark CRUD, per-knight scoping
 on a temp SQLite file), the KnightMemory (settings and feat notes
 round trips), the immutable Shortcut catalogue, multi-realm sessions
-(RealmSession), and the accounts - PasswordHasher (PBKDF2 format and
+(RealmSession), the accounts - PasswordHasher (PBKDF2 format and
 verification), AccountService (sign up / in / out / switch, locked
-ledgers, reserved guest) and KnightsDialog (the seat readouts).
+ledgers, reserved guest) and KnightsDialog (the seat readouts) - the
+far call (Json parsing, Beacon against a canned gateway, the JDK
+gateway against a loopback HTTP server), the shared thread pool
+(Background), RealmTask's failure routing, and the window-share
+bindings. UI-bound proofs wake a live FX toolkit through `FxKit` and
+skip themselves on machines with no display.
