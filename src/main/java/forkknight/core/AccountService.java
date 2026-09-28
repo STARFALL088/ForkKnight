@@ -180,6 +180,23 @@ public final class AccountService {
         return new KnightProfile(account, stats.notes(), stats.bookmarks());
     }
 
+    // -------------------- The drawbridge --------------------
+
+    /** The ledger key the launch gate answers to. */
+    private static final String GATE_KEY = "gate.requireSignIn";
+
+    /** Whether the realm demands a sign-in before it opens. */
+    public boolean signInRequired() {
+        return memory.ledger().getGlobal(GATE_KEY)
+            .map(Boolean::parseBoolean)
+            .orElse(false);
+    }
+
+    /** Raises or lowers the launch gate. */
+    public void setSignInRequired(boolean required) {
+        memory.ledger().setGlobal(GATE_KEY, Boolean.toString(required));
+    }
+
     // -------------------- Validation --------------------
 
     private static void requireUsername(String username) {

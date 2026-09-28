@@ -358,6 +358,15 @@ public class App extends Application {
         primaryStage.setMinWidth(900);
         primaryStage.setMinHeight(460);
         applyTheme();
+
+        // The drawbridge: when the keeper demands a sign-in and only the
+        // wanderer holds the seat, the order's dialog comes up before the
+        // realm does. Closing it without signing in still enters as the
+        // wanderer - the gate asks, it does not imprison.
+        if (accounts.signInRequired() && accounts.current().guest()) {
+            new KnightsDialog(accounts).showAndWait();
+            updateAccountLabel();
+        }
         primaryStage.show();
 
         // The knight remembers where he rode last; on departure, he

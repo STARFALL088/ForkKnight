@@ -8,6 +8,7 @@ import javafx.scene.Node;
 import javafx.scene.control.Alert;
 import javafx.scene.control.Button;
 import javafx.scene.control.ButtonType;
+import javafx.scene.control.CheckBox;
 import javafx.scene.control.Dialog;
 import javafx.scene.control.Label;
 import javafx.scene.control.PasswordField;
@@ -44,6 +45,7 @@ public class KnightsDialog extends Dialog<Void> {
     private final Button signOutBtn = new Button("Sign Out (to the Wanderer)");
     private final Button passwordBtn = new Button("Set Password...");
     private final Button dismissBtn = new Button("Dismiss...");
+    private final CheckBox gateBox = new CheckBox("Require sign-in at launch");
 
     public KnightsDialog(AccountService service) {
         this.service = service;
@@ -85,12 +87,23 @@ public class KnightsDialog extends Dialog<Void> {
         HBox thisKnight = new HBox(10, signOutBtn, passwordBtn, dismissBtn);
         notice.setWrapText(true);
 
+        gateBox.setSelected(service.signInRequired());
+        gateBox.setOnAction(e -> {
+            try {
+                service.setSignInRequired(gateBox.isSelected());
+            } catch (RuntimeException broken) {
+                gateBox.setSelected(!gateBox.isSelected());
+                fail("The gate would not move: " + broken.getMessage());
+            }
+        });
+
         VBox root = new VBox(14,
             whRides,
             new Separator(),
             titled("Sign in / switch knights - a password is required", signInGrid),
             titled("Join the order - a new knight of your own", joinGrid),
             titled("This knight", thisKnight),
+            titled("The drawbridge at launch - the wanderer must sign in", gateBox),
             notice);
         root.setPadding(new Insets(14));
 
