@@ -37,7 +37,9 @@ public enum Shortcut {
     /** Sight - Day sight (light theme). */
     DAY_SIGHT(KeyCode.D, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN),
     /** Sight - Peer into the scryer (search). */
-    SCRY(KeyCode.F, KeyCombination.CONTROL_DOWN);
+    SCRY(KeyCode.F, KeyCombination.CONTROL_DOWN),
+    /** Realm - The knight's own profile page. */
+    PROFILE(KeyCode.P, KeyCombination.CONTROL_DOWN);
 
     private final KeyCodeCombination keys;
 

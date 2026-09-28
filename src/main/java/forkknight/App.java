@@ -20,6 +20,7 @@ import javafx.collections.FXCollections;
 import javafx.collections.ObservableList;
 import javafx.geometry.Insets;
 import javafx.geometry.Pos;
+import javafx.scene.Cursor;
 import javafx.scene.Scene;
 import javafx.scene.canvas.Canvas;
 import javafx.scene.canvas.GraphicsContext;
@@ -30,6 +31,7 @@ import javafx.scene.layout.StackPane;
 import javafx.scene.layout.VBox;
 import javafx.scene.paint.Color;
 import javafx.stage.DirectoryChooser;
+import javafx.stage.PopupWindow;
 import javafx.stage.Stage;
 
 import java.io.File;
@@ -501,6 +503,11 @@ public class App extends Application {
         }
     }
 
+    /** Opens the knight's own page; a sealed profile refreshes the label. */
+    private void summonProfile() {
+        new ProfileDialog(accounts, this::updateAccountLabel).showAndWait();
+    }
+
     /** The menu readout of who rides now. */
     private void updateAccountLabel() {
         Account who = memory.currentAccount().orElse(null);
@@ -509,7 +516,10 @@ public class App extends Application {
         } else if (AccountService.locked(who)) {
             whoRidesLabel.setText("Riding as: " + who.username() + " (locked ledger)");
         } else {
-            whoRidesLabel.setText("Riding as: " + who.username());
+            String known = who.displayName() == null || who.displayName().isBlank()
+                || who.displayName().equals(who.username()) ? ""
+                : " (" + who.displayName() + ")";
+            whoRidesLabel.setText("Riding as: " + who.username() + known);
         }
     }
 
@@ -625,9 +635,22 @@ public class App extends Application {
 
         MenuItem knightsItem = new MenuItem("Knights...");
         knightsItem.setOnAction(e -> summonKnights());
+        MenuItem profileItem = new MenuItem("Profile...");
+        profileItem.setAccelerator(Shortcut.PROFILE.keys());
+        profileItem.setOnAction(e -> summonProfile());
         whoRidesLabel = new Label();
+        whoRidesLabel.setCursor(Cursor.HAND);
+        whoRidesLabel.setOnMouseClicked(e -> {
+            // The label lives inside this menu; shut the menu before the page opens.
+            if (whoRidesLabel.getScene() != null
+                    && whoRidesLabel.getScene().getWindow() instanceof PopupWindow popup) {
+                popup.hide();
+            }
+            summonProfile();
+        });
         CustomMenuItem whoRidesItem = new CustomMenuItem(whoRidesLabel, false);
-        realmMenu.getItems().addAll(knightsItem, whoRidesItem, new SeparatorMenuItem());
+        realmMenu.getItems().addAll(knightsItem, profileItem, whoRidesItem,
+            new SeparatorMenuItem());
 
         MenuItem seekItem = new MenuItem("Seek Realm...");
         seekItem.setAccelerator(Shortcut.SEEK.keys());

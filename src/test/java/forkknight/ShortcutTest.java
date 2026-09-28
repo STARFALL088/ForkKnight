@@ -33,12 +33,14 @@ class ShortcutTest {
         assertEquals(new KeyCodeCombination(KeyCode.D, KeyCombination.CONTROL_DOWN, KeyCombination.SHIFT_DOWN),
                 Shortcut.DAY_SIGHT.keys());
         assertEquals(new KeyCodeCombination(KeyCode.F, KeyCombination.CONTROL_DOWN), Shortcut.SCRY.keys());
+        assertEquals(new KeyCodeCombination(KeyCode.P, KeyCombination.CONTROL_DOWN), Shortcut.PROFILE.keys());
     }
 
     @Test
     void theCatalogueIsExactlyTheseAndNoOthers() {
         Set<String> names = new HashSet<>(Arrays.asList(
-                "SEEK", "MUSTER", "SEAL", "RALLY", "COUNCIL", "ROLL", "DEPART", "DAY_SIGHT", "SCRY"));
+                "SEEK", "MUSTER", "SEAL", "RALLY", "COUNCIL", "ROLL", "DEPART", "DAY_SIGHT", "SCRY",
+                "PROFILE"));
         Set<String> actual = new HashSet<>();
         for (Shortcut shortcut : Shortcut.values()) {
             actual.add(shortcut.name());
