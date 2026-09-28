@@ -237,6 +237,133 @@ class KnightDatabaseTest {
         db.close();
     }
 
+    // -------------------- The knight's own page --------------------
+
+    @Test
+    void testMigratesAV3LedgerAndGivesEveryAccountItsOwnPage() {
+        String dbUrl = "jdbc:sqlite:" + tempDir.resolve("v3.db").toAbsolutePath();
+
+        // A database exactly as v4 found it: accounts without profile
+        // columns, app_state present, user_version still 3.
+        try (java.sql.Connection raw = java.sql.DriverManager.getConnection(dbUrl);
+             java.sql.Statement stmt = raw.createStatement()) {
+            stmt.executeUpdate("CREATE TABLE users ("
+                + "id INTEGER PRIMARY KEY AUTOINCREMENT, "
+                + "username TEXT NOT NULL COLLATE NOCASE UNIQUE, "
+                + "display_name TEXT NOT NULL, "
+                + "password_hash TEXT NOT NULL, "
+                + "is_guest INTEGER NOT NULL DEFAULT 0, "
+                + "created_at TEXT NOT NULL)");
+            stmt.executeUpdate("CREATE TABLE settings (user_id INTEGER NOT NULL "
+                + "REFERENCES users(id) ON DELETE CASCADE, key TEXT NOT NULL, "
+                + "value TEXT NOT NULL, PRIMARY KEY (user_id, key))");
+            stmt.executeUpdate("CREATE TABLE notes (user_id INTEGER NOT NULL "
+                + "REFERENCES users(id) ON DELETE CASCADE, hash TEXT NOT NULL, "
+                + "note TEXT NOT NULL, PRIMARY KEY (user_id, hash))");
+            stmt.executeUpdate("CREATE TABLE realm_bookmarks (user_id INTEGER NOT NULL "
+                + "REFERENCES users(id) ON DELETE CASCADE, realm_path TEXT NOT NULL, "
+                + "name TEXT NOT NULL, PRIMARY KEY (user_id, realm_path))");
+            stmt.executeUpdate("CREATE TABLE app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
+            stmt.executeUpdate("INSERT INTO users (username, display_name, "
+                + "password_hash, is_guest, created_at) VALUES ('keeper', 'The Keeper', "
+                + "'locked$1000$abc', 0, '2026-09-01T00:00:00Z')");
+            stmt.executeUpdate("INSERT INTO users (username, display_name, "
+                + "password_hash, is_guest, created_at) VALUES ('guest', 'Wandering Guest', "
+                + "'', 1, '2026-09-01T00:00:00Z')");
+            stmt.executeUpdate("INSERT INTO notes (user_id, hash, note) VALUES (1, 'deadbeef', 'kept')");
+            stmt.executeUpdate("INSERT INTO app_state (key, value) VALUES ('gate.requireSignIn', 'true')");
+            stmt.executeUpdate("PRAGMA user_version = 3");
+        } catch (java.sql.SQLException e) {
+            fail("could not prepare the v3 ledger: " + e.getMessage());
+        }
+        assertEquals(3, userVersion(dbUrl));
+
+        KnightDatabase db = new KnightDatabase(dbUrl);
+
+        // v4 ran: every old account carries the new page columns...
+        Account found = db.findUserByUsername("keeper").orElseThrow();
+        assertEquals("", found.bio());
+        assertEquals("Squire", found.title());
+        Account wanderer = db.findUserByUsername("guest").orElseThrow();
+        assertEquals("", wanderer.bio());
+        assertEquals("Squire", wanderer.title());
+        assertEquals(KnightDatabase.schemaVersion(), userVersion(dbUrl));
+
+        // ...nothing else was lost, and the page can be written.
+        long keeper = keeper(db);
+        assertEquals("kept", db.getNote(keeper, "deadbeef").orElse(null));
+        assertEquals(Boolean.TRUE, db.getGlobal("gate.requireSignIn").map(Boolean::parseBoolean).orElse(null));
+        db.updateProfile(keeper, "The Keeper", "I keep.", "Warden");
+        assertEquals("I keep.", db.findUserById(keeper).orElseThrow().bio());
+        assertEquals("Warden", db.findUserById(keeper).orElseThrow().title());
+        db.close();
+    }
+
+    @Test
+    void testProfileWritesAndKeepsKnightsApart() {
+        KnightDatabase db = db();
+        long keeper = keeper(db);
+        Account alice = db.createUser("alice", "Alice", "hash-a", false);
+
+        // Fresh accounts start with the defaults the migration set.
+        assertEquals("", alice.bio());
+        assertEquals("Squire", alice.title());
+
+        db.updateProfile(alice.id(), "Alice the Bold", "I ride at dawn.", "Paladin");
+
+        Account updated = db.findUserById(alice.id()).orElseThrow();
+        assertEquals("Alice the Bold", updated.displayName());
+        assertEquals("I ride at dawn.", updated.bio());
+        assertEquals("Paladin", updated.title());
+
+        // The keeper's own page never moved.
+        Account untouched = db.findUserById(keeper).orElseThrow();
+        assertEquals("Keeper of the Ledger", untouched.displayName());
+        assertEquals("", untouched.bio());
+        assertEquals("Squire", untouched.title());
+        db.close();
+    }
+
+    @Test
+    void testProfileStatsCountEachKnightsKeepsakes() {
+        KnightDatabase db = db();
+        long keeper = keeper(db);
+        Account alice = db.createUser("alice", "Alice", "hash-a", false);
+
+        db.setNote(alice.id(), "aaaa1111", "one");
+        db.setNote(alice.id(), "bbbb2222", "two");
+        db.setBookmark(alice.id(), "/alice/realm", "Alice's Realm");
+        db.setNote(keeper, "cccc3333", "keeper's note");
+
+        KnightDatabase.ProfileStats aliceStats = db.profileStats(alice.id());
+        assertEquals(2, aliceStats.notes());
+        assertEquals(1, aliceStats.bookmarks());
+
+        KnightDatabase.ProfileStats keeperStats = db.profileStats(keeper);
+        assertEquals(1, keeperStats.notes());
+        assertEquals(0, keeperStats.bookmarks());
+        db.close();
+    }
+
+    @Test
+    void testDeletingAKnightTakesHisPageAndKeepsakesWithHim() {
+        KnightDatabase db = db();
+        Account alice = db.createUser("alice", "Alice", "hash-a", false);
+        db.updateProfile(alice.id(), "Alice", "Gone soon.", "Knight");
+        db.setNote(alice.id(), "aaaa1111", "one");
+        db.setBookmark(alice.id(), "/alice/realm", "Alice's Realm");
+
+        db.deleteUser(alice.id());
+
+        assertEquals(Optional.empty(), db.findUserById(alice.id()));
+        assertEquals(Optional.empty(), db.getNote(alice.id(), "aaaa1111"));
+        assertEquals(Optional.empty(), db.getBookmarkName(alice.id(), "/alice/realm"));
+        KnightDatabase.ProfileStats stats = db.profileStats(alice.id());
+        assertEquals(0, stats.notes());
+        assertEquals(0, stats.bookmarks());
+        db.close();
+    }
+
     private int userVersion(String dbUrl) {
         try (java.sql.Connection raw = java.sql.DriverManager.getConnection(dbUrl);
              java.sql.Statement stmt = raw.createStatement();

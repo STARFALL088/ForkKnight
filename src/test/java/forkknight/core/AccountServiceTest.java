@@ -211,6 +211,75 @@ class AccountServiceTest {
         assertFalse(service.accounts().isEmpty());
     }
 
+    // -------------------- The knight's own page --------------------
+
+    @Test
+    void updateProfileSealsAndProfileOfSpeaksTheTruth() {
+        Account alice = signUp("alice");
+        db.setNote(alice.id(), "aaaa1111", "one");
+        db.setBookmark(alice.id(), "/alice/realm", "Alice's Realm");
+
+        service.updateProfile(alice.id(), "Alice the Bold", "I ride at dawn.",
+            KnightRank.Paladin);
+
+        KnightProfile page = service.profileOf(alice.id());
+        assertEquals("Alice the Bold", page.account().displayName());
+        assertEquals("I ride at dawn.", page.account().bio());
+        assertEquals("Paladin", page.account().title());
+        assertEquals(1, page.noteCount());
+        assertEquals(1, page.bookmarkCount());
+        // The seat itself carries the new name.
+        assertEquals("Alice the Bold", service.current().displayName());
+    }
+
+    @Test
+    void updateProfileRefusesWhatCannotBeWritten() {
+        Account alice = signUp("alice");
+
+        assertThrows(AuthException.class,
+            () -> service.updateProfile(alice.id(), "  ", "bio", KnightRank.Squire));
+        assertThrows(AuthException.class,
+            () -> service.updateProfile(alice.id(), "x".repeat(41), "bio", KnightRank.Squire));
+        assertThrows(AuthException.class,
+            () -> service.updateProfile(alice.id(), "Name", "x".repeat(201), KnightRank.Squire));
+        assertThrows(AuthException.class,
+            () -> service.updateProfile(alice.id(), "Name", "bio", null));
+        assertThrows(AuthException.class,
+            () -> service.updateProfile(alice.id() + 999, "Name", "bio", KnightRank.Squire));
+
+        // Nothing was written.
+        assertEquals("", db.findUserById(alice.id()).orElseThrow().bio());
+
+        // The wanderer has no page to write in.
+        service.logOut();
+        Account guest = service.current();
+        AuthException refused = assertThrows(AuthException.class,
+            () -> service.updateProfile(guest.id(), "Sneaky", "bio", KnightRank.Warden));
+        assertTrue(refused.getMessage().contains("wanderer"));
+    }
+
+    @Test
+    void profileOfAnUnknownKnightRefuses() {
+        assertThrows(AuthException.class, () -> service.profileOf(9999));
+    }
+
+    // -------------------- The drawbridge --------------------
+
+    @Test
+    void signInRequiredStartsLoweredAndStaysAsSet() {
+        assertFalse(service.signInRequired());
+
+        service.setSignInRequired(true);
+        assertTrue(service.signInRequired());
+
+        // Persisted in app_state: a fresh service over the same ledger agrees.
+        AccountService fresh = new AccountService(new KnightMemory(db), FAST);
+        assertTrue(fresh.signInRequired());
+
+        service.setSignInRequired(false);
+        assertFalse(fresh.signInRequired());
+    }
+
     // -------------------- Cost --------------------
 
     @Test
