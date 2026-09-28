@@ -142,6 +142,44 @@ public final class AccountService {
         memory.ledger().deleteUser(userId);
     }
 
+    // -------------------- The knight's own page --------------------
+
+    /**
+     * Seals a knight's profile: display name, bio and title. The wanderer
+     * has no ledger entry of his own, so he cannot write in one.
+     */
+    public void updateProfile(long userId, String displayName, String bio, KnightRank title) {
+        Account account = memory.ledger().findUserById(userId)
+            .orElseThrow(() -> new AuthException("No such knight rides"));
+        if (account.guest()) {
+            throw new AuthException(
+                "The wanderer rides without a profile - join the Order to claim one");
+        }
+        if (displayName == null || displayName.isBlank()) {
+            throw new AuthException("A profile needs a display name of 1-40 characters");
+        }
+        String name = displayName.strip();
+        if (name.length() > 40) {
+            throw new AuthException("A profile needs a display name of 1-40 characters");
+        }
+        String words = bio == null ? "" : bio;
+        if (words.length() > 200) {
+            throw new AuthException("A bio runs at most 200 characters");
+        }
+        if (title == null) {
+            throw new AuthException("Choose a title from the ranks");
+        }
+        memory.ledger().updateProfile(userId, name, words, title.name());
+    }
+
+    /** The knight's own page: his account plus what he has gathered. */
+    public KnightProfile profileOf(long userId) {
+        Account account = memory.ledger().findUserById(userId)
+            .orElseThrow(() -> new AuthException("No such knight rides"));
+        KnightDatabase.ProfileStats stats = memory.ledger().profileStats(userId);
+        return new KnightProfile(account, stats.notes(), stats.bookmarks());
+    }
+
     // -------------------- Validation --------------------
 
     private static void requireUsername(String username) {

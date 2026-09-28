@@ -10,7 +10,8 @@ import static org.junit.jupiter.api.Assertions.assertTrue;
 class KnightsDialogTest {
 
     private static Account account(String username, String displayName, String hash, boolean guest) {
-        return new Account(7, username, displayName, hash, guest, "2026-09-25T00:00:00Z");
+        return new Account(7, username, displayName, "", "Squire", hash, guest,
+            "2026-09-25T00:00:00Z");
     }
 
     @Test

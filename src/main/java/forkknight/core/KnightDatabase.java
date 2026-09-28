@@ -194,7 +194,8 @@ public final class KnightDatabase {
                 ps.executeUpdate();
                 try (ResultSet keys = ps.getGeneratedKeys()) {
                     if (keys.next()) {
-                        return new Account(keys.getLong(1), username, name, hash, guest, createdAt);
+                        return new Account(keys.getLong(1), username, name, "",
+                            KnightRank.Squire.name(), hash, guest, createdAt);
                     }
                 }
             } catch (SQLException e) {
@@ -519,7 +520,7 @@ public final class KnightDatabase {
     // -------------------- Internals --------------------
 
     private static final String ACCOUNT_COLUMNS =
-        "id, username, display_name, password_hash, is_guest, created_at";
+        "id, username, display_name, bio, title, password_hash, is_guest, created_at";
 
     /** True when the table already carries the column (idempotent upgrades). */
     private static boolean columnExists(Statement stmt, String table, String column)
@@ -555,6 +556,7 @@ public final class KnightDatabase {
 
     private static Account readAccount(ResultSet rs) throws SQLException {
         return new Account(rs.getLong("id"), rs.getString("username"), rs.getString("display_name"),
+            rs.getString("bio"), rs.getString("title"),
             rs.getString("password_hash"), rs.getBoolean("is_guest"), rs.getString("created_at"));
     }
 
