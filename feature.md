@@ -188,12 +188,42 @@ instead of hard pixel floors - columns shrink and grow together - and
 the stage refuses to shrink below 900x460, where its rows could no
 longer show their faces.
 
+### The Knight's Own Page (profile) + the launch gate
+- Migration **v4** (`b461ecc`) - two idempotent `ALTER TABLE users`
+  columns, guarded by `PRAGMA table_info` checks: `bio TEXT NOT NULL
+  DEFAULT ''` and `title TEXT NOT NULL DEFAULT 'Squire'`; new ledger
+  methods `updateProfile` (UPDATE) and `profileStats` (correlated
+  SELECT COUNT of that knight's notes and realm bookmarks)
+- `core/Account` grows `bio` and `title`; `core/KnightRank` is the
+  fixed enum of titles (Squire, Knight, Paladin, Champion, Warden);
+  `core/KnightProfile` pairs the account with his keepsake counts;
+  `AccountService.updateProfile` validates 1-40 char display names,
+  <=200 char bios and a chosen rank, and refuses the wanderer with a
+  reader-facing `AuthException` (`1b5eee1`)
+- `ProfileDialog` (`a0acd18`) - a BorderPane page: avatar initials and
+  read-only facts (username, joined day, note/bookmark counts) on top,
+  editable display name / KnightRank title / bio with a live n/200
+  counter below, Save enabled only when the page is dirty and within
+  200 chars; stats load and saving seals on `RealmTask` background
+  roads, so the FX thread never waits on the ledger; open it through
+  Realm > Profile..., **Ctrl+P**, or by clicking the "Riding as"
+  label (which now carries the display name when it differs)
+- The drawbridge gate (`69fa8d2`) - `AccountService.signInRequired()`
+  keeps `gate.requireSignIn` in `app_state`; the Knights dialog has a
+  "Require sign-in at launch" checkbox; before the window shows,
+  `App.start` raises the sign-in dialog only when the keeper asked
+  for it AND the wanderer holds the seat - cancelling still enters as
+  the wanderer, the gate asks, it does not imprison
+- Tests (`d004094`): v3 -> v4 upgrade in place, profile writes scoped
+  per knight, stats counted apart, delete takes the page with it,
+  validation and the gate; 152 -> 163 green
+
 ### Provenance note
 The ForkKnight idea was submitted on 2026-09-06; the first commits
 reached the repository on 2026-09-09/10 and development continued from
 there. The history carries honest dates - nothing was backdated.
 
-**Test suite: 152 green**
+**Test suite: 163 green**
 
 ---
 
@@ -243,4 +273,4 @@ the background so an externally changed realm never shows stale.
 
 ---
 
-*Last updated: The Far Call - HTTP + JSON, one shared thread pool, RealmTask, and a window that rides its own width.*
+*Last updated: The knight's own page - a profile with bio and title, Ctrl+P, a clickable riding label, and a launch drawbridge that asks for a sign-in.*
