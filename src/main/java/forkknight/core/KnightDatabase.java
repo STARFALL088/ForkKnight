@@ -88,6 +88,17 @@ public final class KnightDatabase {
             try (Statement stmt = conn.createStatement()) {
                 stmt.executeUpdate("CREATE TABLE IF NOT EXISTS app_state (key TEXT PRIMARY KEY, value TEXT NOT NULL)");
             }
+        },
+        // v4 - the knight's own page: profile columns on every account
+        conn -> {
+            try (Statement stmt = conn.createStatement()) {
+                if (!columnExists(stmt, "users", "bio")) {
+                    stmt.executeUpdate("ALTER TABLE users ADD COLUMN bio TEXT NOT NULL DEFAULT ''");
+                }
+                if (!columnExists(stmt, "users", "title")) {
+                    stmt.executeUpdate("ALTER TABLE users ADD COLUMN title TEXT NOT NULL DEFAULT 'Squire'");
+                }
+            }
         }
     );
 
@@ -235,6 +246,51 @@ public final class KnightDatabase {
                 throw new KnightDbException("Could not dismiss the knight", e);
             }
         }
+    }
+
+    // -------------------- The knight's own page --------------------
+
+    /** Writes a knight's display name, bio and title (UPDATE). */
+    public void updateProfile(long userId, String displayName, String bio, String title) {
+        synchronized (lock) {
+            ensureOpen();
+            String sql = "UPDATE users SET display_name = ?, bio = ?, title = ? WHERE id = ?";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setString(1, displayName);
+                ps.setString(2, bio);
+                ps.setString(3, title);
+                ps.setLong(4, userId);
+                ps.executeUpdate();
+            } catch (SQLException e) {
+                throw new KnightDbException("Could not seal the knight's profile", e);
+            }
+        }
+    }
+
+    /** How many notes and realm bookmarks belong to this knight (SELECT COUNT). */
+    public ProfileStats profileStats(long userId) {
+        synchronized (lock) {
+            ensureOpen();
+            String sql = "SELECT "
+                + "(SELECT COUNT(*) FROM notes WHERE user_id = ?) AS notes, "
+                + "(SELECT COUNT(*) FROM realm_bookmarks WHERE user_id = ?) AS bookmarks";
+            try (PreparedStatement ps = conn.prepareStatement(sql)) {
+                ps.setLong(1, userId);
+                ps.setLong(2, userId);
+                try (ResultSet rs = ps.executeQuery()) {
+                    if (rs.next()) {
+                        return new ProfileStats(rs.getLong("notes"), rs.getLong("bookmarks"));
+                    }
+                }
+            } catch (SQLException e) {
+                throw new KnightDbException("Could not count the knight's keepsakes", e);
+            }
+            return new ProfileStats(0, 0);
+        }
+    }
+
+    /** The keepsakes a knight has gathered: counts of notes and bookmarks. */
+    public record ProfileStats(long notes, long bookmarks) {
     }
 
     // -------------------- App state (not owned by any one knight) --------------------
@@ -464,6 +520,19 @@ public final class KnightDatabase {
 
     private static final String ACCOUNT_COLUMNS =
         "id, username, display_name, password_hash, is_guest, created_at";
+
+    /** True when the table already carries the column (idempotent upgrades). */
+    private static boolean columnExists(Statement stmt, String table, String column)
+            throws SQLException {
+        try (ResultSet rs = stmt.executeQuery("PRAGMA table_info(" + table + ")")) {
+            while (rs.next()) {
+                if (column.equalsIgnoreCase(rs.getString("name"))) {
+                    return true;
+                }
+            }
+        }
+        return false;
+    }
 
     @FunctionalInterface
     private interface Binder {
