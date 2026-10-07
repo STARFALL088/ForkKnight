@@ -5,9 +5,31 @@ for the AP Lab assignment. Every git concept is re-imagined in knightly
 (and occasionally anime) vocabulary - the raw "git" tongue is confined to
 a single codex inside `Chronicle` and never leaks into the UI.
 
-*Origins: the idea was submitted on 2026-09-06, the first commits were
-pushed on 2026-09-09/10, and development continued from there; the
-history keeps its honest dates.*
+Several realms stay open at once, local accounts (the Order of Knights,
+optional - the Wanderer rides without signing in) decide whose sight and
+notes are shown, the knight's own page records who you are in the realm,
+and the keyboard shortcuts are one immutable, display-only catalogue
+(`Shortcut`).
+
+## Documentation
+
+The full suite lives in [`docs/`](docs/):
+
+| Guide | What it covers |
+|---|---|
+| [OVERVIEW.md](docs/OVERVIEW.md) | What the project is, at a glance |
+| [USER_GUIDE.md](docs/USER_GUIDE.md) | Every menu and dialog, end to end |
+| [TUTORIAL.md](docs/TUTORIAL.md) | Step-by-step walkthroughs of common work |
+| [ARCHITECTURE.md](docs/ARCHITECTURE.md) | Layers, seams, and why they are cut where they are |
+| [ALGORITHMS.md](docs/ALGORITHMS.md) | Scryer, Weave, Vault, Chronicler in detail |
+| [DEVELOPER_GUIDE.md](docs/DEVELOPER_GUIDE.md) | Building, running, testing, contributing |
+| [DATABASE.md](docs/DATABASE.md) | The Ledger: schema, migrations, WAL |
+| [CONTRIBUTING.md](docs/CONTRIBUTING.md) | House rules for the realm |
+| [FEATURES.md](docs/FEATURES.md) | The feature ledger - every feat, and its state |
+| [IMPROVEMENTS.md](docs/IMPROVEMENTS.md) | What could still be better |
+| [SUMMARY.md](docs/SUMMARY.md) | Index of the suite |
+| [VOCABULARY_REFERENCE.md](docs/VOCABULARY_REFERENCE.md) | Every term in the realm's tongue |
+| [docs/README.md](docs/README.md) | The suite's own README |
 
 ## The Realm's Vocabulary
 
@@ -21,15 +43,13 @@ history keeps its honest dates.*
 | Survey the trail | git log |
 | Enlist | git add (stage) |
 | Release | git reset (unstage) |
-| Seal | git commit |
-| Muster | git status |
-| Dispatch | file change entry |
-| Toll of a feat | diff of a commit |
-| Recount | show (full diff) |
+| Banish | discard changes |
+| Vanquish | delete untracked file |
+| Enlist all | git add -A |
+| Press / Melt a sigil | create / delete a tag |
 | Raise / Fell a banner | create / delete a branch |
 | March to a banner | checkout a branch |
 | Fusion | merge |
-| Press / Melt a sigil | create / delete a tag |
 | Kamui (vanish / summon) | git stash push / pop |
 | Re-seal | git commit --amend |
 | Allies / Rally / Recall / Emissary | remotes / fetch / pull / push |
@@ -37,10 +57,16 @@ history keeps its honest dates.*
 | Scry | search |
 | Night/Day Sight | dark/light theme |
 | Hero | author |
-| Banish | discard changes |
-| Vanquish | delete untracked file |
+| Seal | git commit |
+| Muster | git status |
+| Dispatch | file change entry |
+| Toll of a feat | diff of a commit |
+| Recount | show (full diff) |
 | Far Call to the Wider Realm | HTTP GET to a REST API (JSON) |
 | Profile (the knight's own page) | user profile |
+| The Ledger | SQLite persistence layer |
+| The Order of Knights | local accounts |
+| The Wanderer | the guest / anonymous seat |
 
 ## Project Structure
 
@@ -51,7 +77,7 @@ history keeps its honest dates.*
   - `Weave` - DAG lane assignment for the commit graph
   - `Vault` - O(1) LRU cache for diffs
   - `Chronicler` - realm statistics via bounded top-K heaps
-  - `KnightMemory` - the knight's memory facade (settings, notes, bookmarks)
+  - `Chronicler`, `KnightMemory` - memory facade (settings, notes, bookmarks)
   - `KnightDatabase` - SQLite vault at ~/.forkknight/forkknight.db (JDBC),
     schema versioned via `PRAGMA user_version`, WAL, one reused connection
   - `AccountService`, `Account`, `PasswordHasher`, `AuthException` - the
@@ -67,11 +93,13 @@ history keeps its honest dates.*
 - `src/main/java/forkknight/` - `App` (UI shell), `SealDialog`,
   `CouncilDialog`, `KnightsDialog` (accounts), `ProfileDialog` (the
   knight's own page), `Shortcut` (immutable keys), `BeaconDialog` (the
-  far call), `RealmTask` (abstract background job: pool name +
-  one-voiced failure reporting)
+  far call), `RealmTask` (abstract background job: pool name + one-voiced
+  failure reporting)
 - `src/main/java/forkknight/ui/` - `TalePane` (feat details + diff)
+- `src/main/java/module-info.java` - the module descriptor (exports
+  `forkknight`, `forkknight.core`, `forkknight.ui`)
 - `src/main/resources/forkknight/dark-theme.css` - Night Sight theme
-- `src/test/java/forkknight/core/` - unit tests
+- `src/test/java/forkknight/` - 20 test classes, 163 tests
 
 ## Algorithms & Data Structures
 
@@ -86,8 +114,8 @@ history keeps its honest dates.*
 - **Vault**: access-ordered LinkedHashMap LRU - O(1) hit, miss and
   evict - caching per-file diffs.
 - **Chronicler**: bounded min-heap top-K selection (O(n log k)) powers
-  the Council's leader boards (heroes, days, path heat).
-- **KnightMemory / KnightDatabase**: the memory facade now rides on an
+  the Council's leader boards ( heroes, days, path heat).
+- **KnightMemory / KnightDatabase**: the memory facade rides on an
   embedded SQLite vault - JDBC prepared statements,
   `ON CONFLICT ... DO UPDATE` upserts, and a schema versioned through
   `PRAGMA user_version` (legacy rows migrated, then adopted by the
@@ -95,11 +123,17 @@ history keeps its honest dates.*
 - **Chronicle**: NUL-separated porcelain parsing (rename-aware), a
   compile-time codex guard, and dual-stream subprocess draining with
   timeouts.
+- **Background / RealmTask**: one cached named-daemon-thread pool shared
+  by every background job, with failures reported through a single
+  voice so a task cannot double-report or swallow an error.
 
 ## Prerequisites
 
-- JDK 17 or later (we tested with JDK 26)
-- JavaFX 24.0.2 (matching the version in build.gradle)
+- JDK 17 or later (developed and tested with JDK 27)
+- JavaFX 24.0.2 (the `org.openjfx.javafxplugin` Gradle plugin fetches it
+  automatically - a manual install is not needed)
+
+- Git on the PATH
 
 ## Running the Application
 
@@ -136,7 +170,8 @@ seats, claim a locked ledger), "Bookmark Current Realm..." and
 ./gradlew test
 ```
 
-163 tests cover the Chronicle codex (surveys, tolls, muster, banners,
+163 tests, all passing (verified: 163 run, 0 failures, 0 skipped),
+cover the Chronicle codex (surveys, tolls, muster, banners,
 sigils, Kamui, fusion, allies, re-seal, divergence tallies), the Scryer
 (all scopes, prefixes, multi-word AND, recency/hero lenses), the Weave
 (lanes, forks, recycling, deep bloodlines), the Vault (LRU eviction,
@@ -153,5 +188,8 @@ KnightRank) - the far call (Json parsing, Beacon against a canned
 gateway, the JDK gateway against a loopback HTTP server), the shared
 thread pool (Background), RealmTask's failure routing, and the
 window-share bindings. UI-bound proofs wake a live FX toolkit through
-`FxKit` and
-skip themselves on machines with no display.
+`FxKit` and skip themselves on machines with no display.
+
+## License
+
+No license file is present in this repository.
